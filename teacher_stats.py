@@ -31,7 +31,5 @@ class TeacherStats:
     def render(self):
         with self.tab:
             for rp in self.recording_processors:
-                if self.name not in rp.speaker_stats:
-                    continue
                 st.header(rp.name, divider=True)
                 st.dataframe(get_stats_df(rp.name), use_container_width=True)

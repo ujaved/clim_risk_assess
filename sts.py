@@ -113,7 +113,6 @@ def account():
     if not recordings.data:
         return
     df = pd.DataFrame(recordings.data)
-    print(df.iloc[2]["transcript"] is not None)
     df["has_transcript"] = [r["transcript"] is not None for r in recordings.data]
     st.dataframe(df, column_order=["link", "date", "has_transcript"])
 

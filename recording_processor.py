@@ -32,11 +32,6 @@ class RecordingProcessor:
         self.speaker_stats: dict[str, SpeakerStats] = {}
         self.chatbot = chatbot
     
-    def get_stats_df(self) -> pd.DataFrame:
-        self.get_num_questions()
-        df = pd.DataFrame(self.speaker_stats)
-        return df.loc[['num_turns', 'mean_word_speed', 'mean_words_per_turn', 'num_questions']]
-    
     def get_num_questions(self) -> None:
         prompt = f"Following is a transcript of zoom classroom session. For each speaker tell me the number of questions they ask. \n\n {self.dialogue}"
         messages = [{"role": "user", "content": prompt}]
@@ -80,4 +75,4 @@ class RecordingProcessor:
             stats["mean_word_speed"] = stats["num_words"]/stats["speaking_time"]
             stats["mean_words_per_turn"] = stats["num_words"]/stats["num_turns"]
             
-        self.get_num_questions()
+        #self.get_num_questions()
