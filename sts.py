@@ -13,7 +13,7 @@ import pandas as pd
 
 WELCOME_MSG = "Welcome to Scientifically Taught Science"
 
-client = ZoomClient()
+#client = ZoomClient()
 
 
 # Initialize connection.
