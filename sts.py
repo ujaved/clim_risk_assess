@@ -13,7 +13,7 @@ import pandas as pd
 
 WELCOME_MSG = "Welcome to Scientifically Taught Science"
 
-#client = ZoomClient()
+# client = ZoomClient()
 
 
 # Initialize connection.
@@ -123,8 +123,12 @@ def account():
             transcript=rec["transcript"],
             chatbot=OpenAIChatbot(model_id="gpt-4", temperature=0.0),
         )
-        for _, rec in df.iterrows() if rec["has_transcript"]
+        for _, rec in df.iterrows()
+        if rec["has_transcript"]
     ]
+
+    if not rps:
+        return
     for rp in rps:
         rp.process()
 
@@ -191,7 +195,7 @@ def login():
     with st.form("login_form", clear_on_submit=True):
         st.text_input("Email", key="login_email")
         st.text_input("Password", type="password", key="login_password")
-        st.form_submit_button("Submit", on_click=login_submit, args=[True])
+        st.form_submit_button("Login", on_click=login_submit, args=[True])
 
 
 def register_login():
