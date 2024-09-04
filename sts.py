@@ -81,7 +81,7 @@ def initialize_state(access_tokens: dict[str, str]):
             name=name,
             transcript=requests.get(transcript_download_url).text,
             ts=parser.isoparse(meeting["start_time"]),
-            chatbot=OpenAIChatbot(model_id="gpt-4", temperature=0.0),
+            chatbot=OpenAIChatbot(model_id="gpt-4-turbo", temperature=0.0),
         )
         rp.process()
         st.session_state.rps.append(rp)
@@ -109,7 +109,13 @@ def account():
         st.date_input("Recording date", value=None, key="recording_date")
         st.form_submit_button("Add", on_click=add_recording)
 
-    recordings = st.session_state["conn"].table("recordings").select("*").execute()
+    recordings = (
+        st.session_state["conn"]
+        .table("recordings")
+        .select("*")
+        .eq("user_id", st.session_state["user"].id)
+        .execute()
+    )
     if not recordings.data:
         return
     df = pd.DataFrame(recordings.data)
@@ -121,7 +127,7 @@ def account():
             name=rec["date"],
             ts=parser.isoparse(rec["date"]),
             transcript=rec["transcript"],
-            chatbot=OpenAIChatbot(model_id="gpt-4", temperature=0.0),
+            chatbot=OpenAIChatbot(model_id="gpt-4-turbo", temperature=0.0),
         )
         for _, rec in df.iterrows()
         if rec["has_transcript"]
