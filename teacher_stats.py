@@ -21,11 +21,9 @@ class TeacherStats:
         data = []
         for rp in self.recording_processors:
             for speaker, stats in rp.speaker_stats.items():
-                if speaker == self.name:
-                    continue
                 for stat_name in stats.keys():
                     data.append((rp.ts, speaker, stat_name, stats[stat_name]))
-        df = pd.DataFrame(data, columns=["date", "student", "metric", "value"])
+        df = pd.DataFrame(data, columns=["date", "speaker", "metric", "value"])
         return df
 
     def render(self):

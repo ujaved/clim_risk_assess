@@ -6,10 +6,10 @@ from teacher_stats import TeacherStats
 from chatbot import OpenAIChatbot
 from dateutil import parser
 import altair as alt
-from supabase import create_client
+from supabase import create_client, Client
 from gotrue.errors import AuthApiError
 import pandas as pd
-
+from altair import datum
 
 WELCOME_MSG = "Welcome to Scientifically Taught Science"
 
@@ -19,40 +19,8 @@ WELCOME_MSG = "Welcome to Scientifically Taught Science"
 # Initialize connection.
 # Uses st.cache_resource to only run once.
 @st.cache_resource
-def init_connection():
+def init_connection() -> Client:
     return create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
-
-
-def teachers_selection_cb():
-    if not st.session_state.teachers_selected:
-        return
-    teachers_selected = [t.lower() for t in st.session_state.teachers_selected]
-    for teacher in teachers_selected:
-
-        with st.container(border=True):
-            teacher_stats = TeacherStats(
-                name=teacher,
-                recording_processors=[
-                    rp for rp in st.session_state.rps if teacher in rp.speaker_stats
-                ],
-            )
-            df = teacher_stats.get_stats_df()
-            st.altair_chart(
-                alt.Chart(df, title="Student stats")
-                .mark_line(
-                    point=True,
-                    size=2,
-                )
-                .encode(
-                    alt.X("date"),
-                    alt.Y("value").title(""),
-                    alt.Color("student"),
-                    tooltip=["value", "date"],
-                )
-                .properties(width=200)
-                .facet(facet="metric", spacing=100, title="", columns=3)
-                .resolve_scale(y="independent", x="independent"),
-            )
 
 
 def initialize_state(access_tokens: dict[str, str]):
@@ -102,6 +70,34 @@ def add_recording():
     ).execute()
 
 
+def render_chart(rps: list[RecordingProcessor]):
+    with st.container(border=True):
+        name = (
+            st.session_state.user.user_metadata["first_name"]
+            + " "
+            + st.session_state.user.user_metadata["last_name"]
+        ).lower()
+        teacher_stats = TeacherStats(name=name, recording_processors=rps)
+        df = teacher_stats.get_stats_df()
+        chart = (
+            alt.Chart(df, title="Speaker stats")
+            .mark_line(point=True, size=2)
+            .encode(
+                alt.X("date"),
+                alt.Y("value").title(""),
+                alt.Color("speaker"),
+                tooltip=["value", "date"],
+            )
+            .properties(width=200)
+            .facet(facet="metric", spacing=100, title="", columns=3)
+            .resolve_scale(y="independent", x="independent")
+        )
+        show_teacher = st.checkbox("Show teacher data")
+        if not show_teacher:
+            chart = chart.transform_filter(datum.speaker != name)
+        st.altair_chart(chart)
+
+
 def account():
 
     with st.form("Add Recording", clear_on_submit=True):
@@ -124,10 +120,11 @@ def account():
 
     rps = [
         RecordingProcessor(
-            name=rec["date"],
+            id=rec["id"],
             ts=parser.isoparse(rec["date"]),
             transcript=rec["transcript"],
             chatbot=OpenAIChatbot(model_id="gpt-4-turbo", temperature=0.0),
+            db_client=st.session_state["conn"],
         )
         for _, rec in df.iterrows()
         if rec["has_transcript"]
@@ -138,30 +135,7 @@ def account():
     for rp in rps:
         rp.process()
 
-    with st.container(border=True):
-        name = (
-            st.session_state.user.user_metadata["first_name"]
-            + " "
-            + st.session_state.user.user_metadata["last_name"]
-        ).lower()
-        teacher_stats = TeacherStats(name=name, recording_processors=rps)
-        df = teacher_stats.get_stats_df()
-        st.altair_chart(
-            alt.Chart(df, title="Student stats")
-            .mark_line(
-                point=True,
-                size=2,
-            )
-            .encode(
-                alt.X("date"),
-                alt.Y("value").title(""),
-                alt.Color("student"),
-                tooltip=["value", "date"],
-            )
-            .properties(width=200)
-            .facet(facet="metric", spacing=100, title="", columns=3)
-            .resolve_scale(y="independent", x="independent"),
-        )
+    render_chart(rps)
 
 
 def login_submit(is_login: bool):
