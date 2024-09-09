@@ -56,9 +56,12 @@ def initialize_state(access_tokens: dict[str, str]):
     st.session_state.rps = sorted(st.session_state.rps, key=lambda r: r.ts)
 
 
-def add_recording():
-    if not st.session_state.get("recording_url") or not st.session_state.get(
-        "recording_date"
+def add_recording_cb():
+
+    if (
+        not st.session_state.get("recording_url")
+        or not st.session_state.get("recording_date")
+        or not st.session_state.get("recording_class")
     ):
         return
     st.session_state.conn.table("recordings").insert(
@@ -66,8 +69,48 @@ def add_recording():
             "user_id": st.session_state.user.id,
             "link": st.session_state.recording_url,
             "date": st.session_state.recording_date.isoformat(),
+            "class_id": st.session_state["class_name_id_mapping"][
+                st.session_state.get("recording_class")
+            ],
         }
     ).execute()
+
+
+def new_class_cb():
+    st.session_state.conn.table("classes").insert(
+        {
+            "name": st.session_state.new_class,
+            "teacher_id": st.session_state.user.id,
+        }
+    ).execute()
+    st.session_state.new_class = ""
+
+
+def add_recording():
+
+    classes = (
+        st.session_state.conn.table("classes")
+        .select("*")
+        .eq("teacher_id", st.session_state["user"].id)
+        .execute()
+    )
+    st.session_state["class_name_id_mapping"] = {
+        cl["name"]: cl["id"] for cl in classes.data
+    }
+
+    with st.form("Add Recording", clear_on_submit=True):
+        st.text_input("Zoom Recording URL", key="recording_url")
+        st.selectbox(
+            "Class", [cl["name"] for cl in classes.data], key="recording_class"
+        )
+        st.date_input("Recording date", value=None, key="recording_date")
+        st.form_submit_button("Add", on_click=add_recording_cb)
+
+    st.text_input(
+        "Don't see the class name in the dropdown? Add a class",
+        on_change=new_class_cb,
+        key="new_class",
+    )
 
 
 def render_chart(rps: list[RecordingProcessor]):
@@ -98,25 +141,35 @@ def render_chart(rps: list[RecordingProcessor]):
         st.altair_chart(chart)
 
 
-def account():
+def dashboard():
 
-    with st.form("Add Recording", clear_on_submit=True):
-        st.text_input("Add a zoom recording share URL", key="recording_url")
-        st.date_input("Recording date", value=None, key="recording_date")
-        st.form_submit_button("Add", on_click=add_recording)
+    classes = (
+        st.session_state.conn.table("classes")
+        .select("*")
+        .eq("teacher_id", st.session_state["user"].id)
+        .execute()
+    )
+    st.session_state["class_name_id_mapping"] = {
+        cl["name"]: cl["id"] for cl in classes.data
+    }
+
+    cl = st.sidebar.radio(
+        "Classes Taught", st.session_state.class_name_id_mapping.keys()
+    )
 
     recordings = (
         st.session_state["conn"]
         .table("recordings")
         .select("*")
         .eq("user_id", st.session_state["user"].id)
+        .eq("class_id", st.session_state.class_name_id_mapping[cl])
         .execute()
     )
     if not recordings.data:
         return
     df = pd.DataFrame(recordings.data)
     df["has_transcript"] = [r["transcript"] is not None for r in recordings.data]
-    st.dataframe(df, column_order=["link", "date", "has_transcript"])
+    # st.dataframe(df, column_order=["link", "date", "has_transcript"])
 
     rps = [
         RecordingProcessor(
@@ -199,31 +252,34 @@ def main():
 
     st.set_page_config(page_title="STS", page_icon=":teacher:", layout="wide")
     st.session_state["conn"] = init_connection()
+
     if st.session_state.get("authenticated"):
-        account()
+        pg = st.navigation(
+            [
+                st.Page(
+                    dashboard,
+                    title="Dashboard",
+                    icon=":material/dashboard:",
+                    default=True,
+                ),
+                st.Page(add_recording, title="Add recording"),
+            ]
+        )
+        pg.run()
     elif st.session_state.get("registered"):
         login()
     else:
         register_login()
 
-    """
-    st.sidebar.multiselect(
-        "Teachers",
-        teacher2access_token.keys(),
-        key="teachers_selected",
-        on_change=teachers_selection_cb,
-    )
-    initialize_state(teacher2access_token)
 
-    teacher_tabs = []
-    if len(st.session_state.teacher_stats) > 0:
-        teacher_tab_names = [ts.name for ts in st.session_state.teacher_stats]
-        teacher_tab_names.reverse()
-        teacher_tabs = st.tabs(teacher_tab_names)
-    for i, t in enumerate(reversed(teacher_tabs)):
-        st.session_state.teacher_stats[i].tab = t
-        st.session_state.teacher_stats[i].render()
-    """
+#  teacher_tabs = []
+#  if len(st.session_state.teacher_stats) > 0:
+#      teacher_tab_names = [ts.name for ts in st.session_state.teacher_stats]
+#      teacher_tab_names.reverse()
+#      teacher_tabs = st.tabs(teacher_tab_names)
+#  for i, t in enumerate(reversed(teacher_tabs)):
+#      st.session_state.teacher_stats[i].tab = t
+#     st.session_state.teacher_stats[i].render()
 
 
 if __name__ == "__main__":
