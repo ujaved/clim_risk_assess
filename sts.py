@@ -113,17 +113,16 @@ def add_recording():
     )
 
 
-def render_chart(rps: list[RecordingProcessor]):
+def render_charts(rps: list[RecordingProcessor]):
+    name = (
+        st.session_state.user.user_metadata["first_name"]
+        + " "
+        + st.session_state.user.user_metadata["last_name"]
+    ).lower()
+    teacher_stats = TeacherStats(name=name, recording_processors=rps)
     with st.container(border=True):
-        name = (
-            st.session_state.user.user_metadata["first_name"]
-            + " "
-            + st.session_state.user.user_metadata["last_name"]
-        ).lower()
-        teacher_stats = TeacherStats(name=name, recording_processors=rps)
-        df = teacher_stats.get_stats_df()
         chart = (
-            alt.Chart(df, title="Speaker stats")
+            alt.Chart(teacher_stats.get_participation_stats_df())
             .mark_line(point=True, size=2)
             .encode(
                 alt.X("date"),
@@ -135,10 +134,40 @@ def render_chart(rps: list[RecordingProcessor]):
             .facet(facet="metric", spacing=100, title="", columns=3)
             .resolve_scale(y="independent", x="independent")
         )
+        st.header("Aggregate Participation Metrics", divider=True)
         show_teacher = st.checkbox("Show teacher data")
         if not show_teacher:
             chart = chart.transform_filter(datum.speaker != name)
         st.altair_chart(chart)
+
+    with st.container(border=True):
+        df_by_date, df_agg = teacher_stats.get_pairwise_following_df()
+        chart_by_date = (
+            alt.Chart(df_by_date)
+            .mark_rect(color="orange", size=5)
+            .encode(
+                alt.X("lead"),
+                alt.Y("follow"),
+                alt.Color("count"),
+            )
+            .properties(width=200)
+            .facet(facet="date", spacing=150, title="", columns=2)
+        )
+
+        chart_agg = (
+            alt.Chart(df_agg)
+            .mark_rect(color="orange", size=5)
+            .encode(
+                alt.X("lead"),
+                alt.Y("follow"),
+                alt.Color("count"),
+            )
+        )
+        st.header("Student Pairwise", divider=True)
+        if st.checkbox("Sum across all dates"):
+            st.altair_chart(chart_agg, use_container_width=True)
+        else:
+            st.altair_chart(chart_by_date)
 
 
 def dashboard():
@@ -188,7 +217,7 @@ def dashboard():
     for rp in rps:
         rp.process()
 
-    render_chart(rps)
+    render_charts(rps)
 
 
 def login_submit(is_login: bool):

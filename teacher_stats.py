@@ -2,7 +2,6 @@ from dataclasses import dataclass, field
 from recording_processor import RecordingProcessor
 import streamlit as st
 import pandas as pd
-import numpy as np
 
 
 @st.cache_data
@@ -17,7 +16,7 @@ class TeacherStats:
     students: set[str] = field(default_factory=set)
     tab: any = None
 
-    def get_stats_df(self) -> pd.DataFrame:
+    def get_participation_stats_df(self) -> pd.DataFrame:
         data = []
         for rp in self.recording_processors:
             for speaker, stats in rp.speaker_stats.items():
@@ -25,6 +24,34 @@ class TeacherStats:
                     data.append((rp.ts, speaker, stat_name, stats[stat_name]))
         df = pd.DataFrame(data, columns=["date", "speaker", "metric", "value"])
         return df
+
+    def get_pairwise_following_df(self) -> tuple[pd.DataFrame, pd.DataFrame]:
+        data = []
+        pairwise_agg_count = {}
+        for rp in self.recording_processors:
+            dialogue_without_teacher = [d for d in rp.dialogue if d[0] != self.name]
+            pairwise_count = {}
+            for i, d in enumerate(dialogue_without_teacher[1:]):
+                if dialogue_without_teacher[i - 1][0] == d[0]:
+                    continue
+                pair = (dialogue_without_teacher[i - 1][0], d[0])
+
+                count = pairwise_count[pair] if pair in pairwise_count else 0
+                pairwise_count[pair] = count + 1
+
+                count = pairwise_agg_count[pair] if pair in pairwise_agg_count else 0
+                pairwise_agg_count[pair] = count + 1
+
+            for p, count in pairwise_count.items():
+                data.append(
+                    {"lead": p[0], "follow": p[1], "count": count, "date": rp.ts}
+                )
+        return pd.DataFrame(data), pd.DataFrame(
+            [
+                {"lead": p[0], "follow": p[1], "count": count}
+                for p, count in pairwise_agg_count.items()
+            ]
+        )
 
     def render(self):
         with self.tab:
