@@ -25,13 +25,30 @@ class TeacherStats:
         df = pd.DataFrame(data, columns=["date", "speaker", "metric", "value"])
         return df
 
+    def get_teacher_interruption_df(self) -> pd.DataFrame:
+        data = []
+        for rp in self.recording_processors:
+            interruption_count = {}
+            for i, d in enumerate(rp.dialogue[1 : len(rp.dialogue) - 1], start=1):
+                # we consider 3-dialogue blocks with the middle (current) potentially representing a teacher interruption
+                if d[0] != self.name or rp.dialogue[i - 1][0] != rp.dialogue[i + 1][0]:
+                    continue
+                student = rp.dialogue[i - 1][0]
+                count = (
+                    interruption_count[student] if student in interruption_count else 0
+                )
+                interruption_count[student] = count + 1
+            for s, c in interruption_count.items():
+                data.append({"student": s, "interruption_count": c, "date": rp.ts})
+        return pd.DataFrame(data)
+
     def get_pairwise_following_df(self) -> tuple[pd.DataFrame, pd.DataFrame]:
         data = []
         pairwise_agg_count = {}
         for rp in self.recording_processors:
             dialogue_without_teacher = [d for d in rp.dialogue if d[0] != self.name]
             pairwise_count = {}
-            for i, d in enumerate(dialogue_without_teacher[1:]):
+            for i, d in enumerate(dialogue_without_teacher[1:], start=1):
                 if dialogue_without_teacher[i - 1][0] == d[0]:
                     continue
                 pair = (dialogue_without_teacher[i - 1][0], d[0])

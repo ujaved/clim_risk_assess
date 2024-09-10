@@ -141,6 +141,20 @@ def render_charts(rps: list[RecordingProcessor]):
         st.altair_chart(chart)
 
     with st.container(border=True):
+        df = teacher_stats.get_teacher_interruption_df()
+        chart = (
+            alt.Chart(df)
+            .mark_line(point=True, size=2)
+            .encode(
+                alt.X("date"),
+                alt.Y("interruption_count"),
+                alt.Color("student"),
+            )
+        )
+        st.header("Number of possible interruptions by teacher", divider=True)
+        st.altair_chart(chart)
+
+    with st.container(border=True):
         df_by_date, df_agg = teacher_stats.get_pairwise_following_df()
         chart_by_date = (
             alt.Chart(df_by_date)
