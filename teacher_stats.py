@@ -34,12 +34,13 @@ class TeacherStats:
                 if d[0] != self.name or rp.dialogue[i - 1][0] != rp.dialogue[i + 1][0]:
                     continue
                 student = rp.dialogue[i - 1][0]
-                count = (
-                    interruption_count[student] if student in interruption_count else 0
+                data.append(
+                    {
+                        "student": student,
+                        "date": rp.ts,
+                        "num_seconds_before_interruption": rp.dialogue[i - 1][2],
+                    }
                 )
-                interruption_count[student] = count + 1
-            for s, c in interruption_count.items():
-                data.append({"student": s, "interruption_count": c, "date": rp.ts})
         return pd.DataFrame(data)
 
     def get_pairwise_following_df(self) -> tuple[pd.DataFrame, pd.DataFrame]:

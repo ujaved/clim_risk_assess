@@ -142,16 +142,12 @@ def render_charts(rps: list[RecordingProcessor]):
 
     with st.container(border=True):
         df = teacher_stats.get_teacher_interruption_df()
-        chart = (
-            alt.Chart(df)
-            .mark_line(point=True, size=2)
-            .encode(
-                alt.X("date"),
-                alt.Y("interruption_count"),
-                alt.Color("student"),
-            )
-        )
-        st.header("Number of possible interruptions by teacher", divider=True)
+        chart = alt.Chart(df).mark_line(point=True, size=2)
+        st.header("Possible interruptions by teacher", divider=True)
+        if st.checkbox("Mean duration in seconds before interruption", value=True):
+            chart = chart.encode(x='date', y='mean(num_seconds_before_interruption)', color='student')
+        else:
+            chart = chart.encode(x='date', y='count(num_seconds_before_interruption)', color='student')
         st.altair_chart(chart)
 
     with st.container(border=True):

@@ -64,6 +64,7 @@ class RecordingProcessor:
     def process(self):
         prev_speaker = None
         prev_content = None
+        cur_turn_start = 0
         for caption in webvtt.from_string(self.transcript):
             fields = caption.text.split(":")
             speaker = fields[0].lower()
@@ -84,12 +85,21 @@ class RecordingProcessor:
                 prev_content = f"{prev_content}{content}".strip()
             else:
                 self.speaker_stats[speaker]["num_turns"] += 1
-                self.dialogue.append((prev_speaker, prev_content))
+                self.dialogue.append(
+                    (
+                        prev_speaker,
+                        prev_content,
+                        caption.end_in_seconds - cur_turn_start,
+                    )
+                )
                 prev_content = content
+                cur_turn_start = caption.start_in_seconds
             prev_speaker = speaker
 
         self.dialogue = self.dialogue[1:]
-        self.dialogue.append((prev_speaker, prev_content))
+        self.dialogue.append(
+            (prev_speaker, prev_content, caption.end_in_seconds - cur_turn_start)
+        )
         for stats in self.speaker_stats.values():
             stats["mean_words_per_sec"] = stats["num_words"] / stats["speaking_time"]
             stats["mean_words_per_turn"] = stats["num_words"] / stats["num_turns"]
@@ -102,7 +112,7 @@ class RecordingProcessor:
             .execute()
         )
         if recording_stats:
-            json = recording_stats.data['num_questions']
+            json = recording_stats.data["num_questions"]
         else:
             json = self.get_num_questions()
             self.db_client.table("recording_stats").insert(
