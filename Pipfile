@@ -25,6 +25,7 @@ sqlalchemy = "*"
 supabase = "*"
 streamlit-url-fragment = "*"
 supabase_auth = "*"
+streamlit_option_menu = "*"
 
 [dev-packages]
 

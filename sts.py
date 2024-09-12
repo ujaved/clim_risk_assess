@@ -10,6 +10,7 @@ from supabase import create_client, Client
 from gotrue.errors import AuthApiError
 import pandas as pd
 from altair import datum
+from streamlit_option_menu import option_menu
 
 WELCOME_MSG = "Welcome to Scientifically Taught Science"
 
@@ -23,37 +24,17 @@ def init_connection() -> Client:
     return create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
 
 
-def initialize_state(access_tokens: dict[str, str]):
-    if st.session_state.get("disable_teacher_selection") is None:
-        st.session_state["disable_teacher_selection"] = False
-    if st.session_state.get("teacher_stats") is None:
-        st.session_state.teacher_stats = []
-
-    if "rps" in st.session_state:
-        return
-    st.session_state.rps = []
-    with st.spinner("retrieving zoom meetings"):
-        recs = client.get_recordings(num_lookback_months=6)
-
-    for meeting in recs:
-        transcript_download_url = [
-            f["download_url"]
-            for f in meeting["recording_files"]
-            if f["file_type"] == "TRANSCRIPT"
-        ][0]
-        transcript_download_url = (
-            f"{transcript_download_url}?access_token={client.access_token}"
+def initialize_state():
+    if "class_name_id_mapping" not in st.session_state:
+        classes = (
+            st.session_state.conn.table("classes")
+            .select("*")
+            .eq("teacher_id", st.session_state["user"].id)
+            .execute()
         )
-        name = f"{meeting['topic']}_{meeting['start_time']}"
-        rp = RecordingProcessor(
-            name=name,
-            transcript=requests.get(transcript_download_url).text,
-            ts=parser.isoparse(meeting["start_time"]),
-            chatbot=OpenAIChatbot(model_id="gpt-4-turbo", temperature=0.0),
-        )
-        rp.process()
-        st.session_state.rps.append(rp)
-    st.session_state.rps = sorted(st.session_state.rps, key=lambda r: r.ts)
+        st.session_state["class_name_id_mapping"] = {
+            cl["name"]: cl["id"] for cl in classes.data
+        }
 
 
 def add_recording_cb():
@@ -84,24 +65,17 @@ def new_class_cb():
         }
     ).execute()
     st.session_state.new_class = ""
+    # remove mapping so it gets refreshed
+    del st.session_state["class_name_id_mapping"]
 
 
 def add_recording():
-
-    classes = (
-        st.session_state.conn.table("classes")
-        .select("*")
-        .eq("teacher_id", st.session_state["user"].id)
-        .execute()
-    )
-    st.session_state["class_name_id_mapping"] = {
-        cl["name"]: cl["id"] for cl in classes.data
-    }
-
     with st.form("Add Recording", clear_on_submit=True):
         st.text_input("Zoom Recording URL", key="recording_url")
         st.selectbox(
-            "Class", [cl["name"] for cl in classes.data], key="recording_class"
+            "Class",
+            st.session_state.class_name_id_mapping.keys(),
+            key="recording_class",
         )
         st.date_input("Recording date", value=None, key="recording_date")
         st.form_submit_button("Add", on_click=add_recording_cb)
@@ -113,19 +87,13 @@ def add_recording():
     )
 
 
-def render_charts(rps: list[RecordingProcessor]):
-    name = (
-        st.session_state.user.user_metadata["first_name"]
-        + " "
-        + st.session_state.user.user_metadata["last_name"]
-    ).lower()
-    teacher_stats = TeacherStats(name=name, recording_processors=rps)
+def render_participation_charts(teacher_stats: TeacherStats):
     with st.container(border=True):
         chart = (
             alt.Chart(teacher_stats.get_participation_stats_df())
             .mark_line(point=True, size=2)
             .encode(
-                alt.X("date"),
+                alt.X("date:O"),
                 alt.Y("value").title(""),
                 alt.Color("speaker"),
                 tooltip=["value", "date"],
@@ -137,19 +105,27 @@ def render_charts(rps: list[RecordingProcessor]):
         st.header("Aggregate Participation Metrics", divider=True)
         show_teacher = st.checkbox("Show teacher data")
         if not show_teacher:
-            chart = chart.transform_filter(datum.speaker != name)
+            chart = chart.transform_filter(datum.speaker != teacher_stats.name)
         st.altair_chart(chart)
 
+
+def render_interruption_charts(teacher_stats: TeacherStats):
     with st.container(border=True):
         df = teacher_stats.get_teacher_interruption_df()
         chart = alt.Chart(df).mark_line(point=True, size=2)
         st.header("Possible interruptions by teacher", divider=True)
         if st.checkbox("Mean duration in seconds before interruption", value=True):
-            chart = chart.encode(x='date', y='mean(num_seconds_before_interruption)', color='student')
+            chart = chart.encode(
+                x="date:O", y="mean(num_seconds_before_interruption)", color="student"
+            )
         else:
-            chart = chart.encode(x='date', y='count(num_seconds_before_interruption)', color='student')
-        st.altair_chart(chart)
+            chart = chart.encode(
+                x="date:O", y="count(num_seconds_before_interruption)", color="student"
+            )
+        st.altair_chart(chart, use_container_width=True)
 
+
+def render_pairwise_charts(teacher_stats: TeacherStats):
     with st.container(border=True):
         df_by_date, df_agg = teacher_stats.get_pairwise_following_df()
         chart_by_date = (
@@ -180,22 +156,10 @@ def render_charts(rps: list[RecordingProcessor]):
             st.altair_chart(chart_by_date)
 
 
-def dashboard():
-
-    classes = (
-        st.session_state.conn.table("classes")
-        .select("*")
-        .eq("teacher_id", st.session_state["user"].id)
-        .execute()
-    )
-    st.session_state["class_name_id_mapping"] = {
-        cl["name"]: cl["id"] for cl in classes.data
-    }
-
+def get_teacher_stats() -> TeacherStats:
     cl = st.sidebar.radio(
         "Classes Taught", st.session_state.class_name_id_mapping.keys()
     )
-
     recordings = (
         st.session_state["conn"]
         .table("recordings")
@@ -227,7 +191,29 @@ def dashboard():
     for rp in rps:
         rp.process()
 
-    render_charts(rps)
+    name = (
+        st.session_state.user.user_metadata["first_name"]
+        + " "
+        + st.session_state.user.user_metadata["last_name"]
+    ).lower()
+    return TeacherStats(name=name, recording_processors=rps)
+
+
+def dashboard():
+    if "teacher_stats" not in st.session_state:
+        st.session_state["teacher_stats"] = get_teacher_stats()
+
+    with st.sidebar:
+        dashboard_option = option_menu(
+            "Metrics", ["Participation", "Pairwise Interaction", "Teacher Interruption"]
+        )
+    match dashboard_option:
+        case "Participation":
+            render_participation_charts(st.session_state.teacher_stats)
+        case "Pairwise Interaction":
+            render_pairwise_charts(st.session_state.teacher_stats)
+        case "Teacher Interruption":
+            render_interruption_charts(st.session_state.teacher_stats)
 
 
 def login_submit(is_login: bool):
@@ -293,6 +279,7 @@ def main():
     st.session_state["conn"] = init_connection()
 
     if st.session_state.get("authenticated"):
+        initialize_state()
         pg = st.navigation(
             [
                 st.Page(
@@ -301,7 +288,7 @@ def main():
                     icon=":material/dashboard:",
                     default=True,
                 ),
-                st.Page(add_recording, title="Add recording"),
+                st.Page(add_recording, title="Add recording", icon=":material/videocam:"),
             ]
         )
         pg.run()

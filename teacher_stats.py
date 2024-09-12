@@ -21,7 +21,7 @@ class TeacherStats:
         for rp in self.recording_processors:
             for speaker, stats in rp.speaker_stats.items():
                 for stat_name in stats.keys():
-                    data.append((rp.ts, speaker, stat_name, stats[stat_name]))
+                    data.append((rp.ts.date().isoformat(), speaker, stat_name, stats[stat_name]))
         df = pd.DataFrame(data, columns=["date", "speaker", "metric", "value"])
         return df
 
@@ -37,7 +37,7 @@ class TeacherStats:
                 data.append(
                     {
                         "student": student,
-                        "date": rp.ts,
+                        "date": rp.ts.date().isoformat(),
                         "num_seconds_before_interruption": rp.dialogue[i - 1][2],
                     }
                 )

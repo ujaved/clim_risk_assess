@@ -31,6 +31,20 @@ class ZoomClient:
             rv.extend(response_json["meetings"])
         return rv
     
+    """
+    usage
+    for meeting in recs:
+        transcript_download_url = [
+            f["download_url"]
+            for f in meeting["recording_files"]
+            if f["file_type"] == "TRANSCRIPT"
+        ][0]
+        transcript_download_url = (
+            f"{transcript_download_url}?access_token={client.access_token}"
+        )
+        name = f"{meeting['topic']}_{meeting['start_time']}"
+    """
+    
     def get_audio_download_url(self, meeting_id):
         headers = {"Authorization": f"Bearer {self.access_token}"}
         url = f"https://api.zoom.us/v2/meetings/{meeting_id}/recordings"
