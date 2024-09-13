@@ -132,9 +132,9 @@ def render_pairwise_charts(teacher_stats: TeacherStats):
             alt.Chart(df_by_date)
             .mark_rect(color="orange", size=5)
             .encode(
-                alt.X("lead"),
-                alt.Y("follow"),
-                alt.Color("count"),
+                alt.X("follow"),
+                alt.Y("lead"),
+                alt.Color("normalized_count"),
             )
             .properties(width=200)
             .facet(facet="date", spacing=150, title="", columns=2)
@@ -144,12 +144,12 @@ def render_pairwise_charts(teacher_stats: TeacherStats):
             alt.Chart(df_agg)
             .mark_rect(color="orange", size=5)
             .encode(
-                alt.X("lead"),
-                alt.Y("follow"),
-                alt.Color("count"),
+                alt.X("follow"),
+                alt.Y("lead"),
+                alt.Color("normalized_count"),
             )
         )
-        st.header("Student Pairwise", divider=True)
+        st.header("Student Pairwise Interactions", divider=True)
         if st.checkbox("Sum across all dates"):
             st.altair_chart(chart_agg, use_container_width=True)
         else:
@@ -205,7 +205,9 @@ def dashboard():
 
     with st.sidebar:
         dashboard_option = option_menu(
-            "Metrics", ["Participation", "Pairwise Interaction", "Teacher Interruption"]
+            "Metrics",
+            ["Participation", "Pairwise Interaction", "Teacher Interruption"],
+            icons=["person-raised-hand", "people-fill", "person-arms-up"],
         )
     match dashboard_option:
         case "Participation":
@@ -288,7 +290,9 @@ def main():
                     icon=":material/dashboard:",
                     default=True,
                 ),
-                st.Page(add_recording, title="Add recording", icon=":material/videocam:"),
+                st.Page(
+                    add_recording, title="Add recording", icon=":material/videocam:"
+                ),
             ]
         )
         pg.run()
