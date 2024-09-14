@@ -88,9 +88,15 @@ def add_recording():
 
 
 def render_participation_charts(teacher_stats: TeacherStats):
+    st.subheader("Aggregate Participation Metrics", divider=True)
     with st.container(border=True):
+        col1, col2 = st.columns(2)
+        df = teacher_stats.get_participation_stats_df(
+            col1.date_input("start date", value=None),
+            col2.date_input("end date", value=None),
+        )
         chart = (
-            alt.Chart(teacher_stats.get_participation_stats_df())
+            alt.Chart(df)
             .mark_line(point=True, size=2)
             .encode(
                 alt.X("date:O"),
@@ -102,18 +108,20 @@ def render_participation_charts(teacher_stats: TeacherStats):
             .facet(facet="metric", spacing=100, title="", columns=3)
             .resolve_scale(y="independent", x="independent")
         )
-        st.header("Aggregate Participation Metrics", divider=True)
-        show_teacher = st.checkbox("Show teacher data")
-        if not show_teacher:
+        if not st.checkbox("Show teacher data"):
             chart = chart.transform_filter(datum.speaker != teacher_stats.name)
         st.altair_chart(chart)
 
 
 def render_interruption_charts(teacher_stats: TeacherStats):
+    st.subheader("Possible interruptions by teacher", divider=True)
     with st.container(border=True):
-        df = teacher_stats.get_teacher_interruption_df()
+        col1, col2 = st.columns(2)
+        df = teacher_stats.get_teacher_interruption_df(
+            col1.date_input("start date", value=None),
+            col2.date_input("end date", value=None),
+        )
         chart = alt.Chart(df).mark_line(point=True, size=2)
-        st.header("Possible interruptions by teacher", divider=True)
         if st.checkbox("Mean duration in seconds before interruption", value=True):
             chart = chart.encode(
                 x="date:O", y="mean(num_seconds_before_interruption)", color="student"
@@ -126,8 +134,16 @@ def render_interruption_charts(teacher_stats: TeacherStats):
 
 
 def render_pairwise_charts(teacher_stats: TeacherStats):
+    st.subheader(
+        "Pairwise interaction for a (follow, lead) pair is the fraction of the follow's turns that come directly after the lead's turn",
+        divider=True,
+    )
     with st.container(border=True):
-        df_by_date, df_agg = teacher_stats.get_pairwise_following_df()
+        col1, col2 = st.columns(2)
+        df_by_date, df_agg = teacher_stats.get_pairwise_following_df(
+            col1.date_input("start date", value=None),
+            col2.date_input("end date", value=None),
+        )
         chart_by_date = (
             alt.Chart(df_by_date)
             .mark_rect(color="orange", size=5)
@@ -148,24 +164,31 @@ def render_pairwise_charts(teacher_stats: TeacherStats):
                 alt.Y("lead"),
                 alt.Color("normalized_count"),
             )
+            .add_params(alt.selection_point())
         )
-        st.header("Student Pairwise Interactions", divider=True)
-        if st.checkbox("Sum across all dates"):
-            st.altair_chart(chart_agg, use_container_width=True)
+        if st.checkbox(
+            "Aggregate (Click on a metrix cell to get a concrete description)",
+            value=True,
+        ):
+            selection = st.altair_chart(
+                chart_agg, use_container_width=True, on_select="rerun"
+            ).selection.param_1
+            if selection:
+                st.info(
+                    f"When {selection[0]['follow']} spoke they followed {selection[0]['lead']}'s turn {selection[0]['normalized_count']*100} % of the time."
+                )
         else:
+            # selection won't work on this chart since it is a multi-chart
             st.altair_chart(chart_by_date)
 
 
-def get_teacher_stats() -> TeacherStats:
-    cl = st.sidebar.radio(
-        "Classes Taught", st.session_state.class_name_id_mapping.keys()
-    )
+def get_teacher_stats(class_id: str) -> TeacherStats:
     recordings = (
         st.session_state["conn"]
         .table("recordings")
         .select("*")
         .eq("user_id", st.session_state["user"].id)
-        .eq("class_id", st.session_state.class_name_id_mapping[cl])
+        .eq("class_id", class_id)
         .execute()
     )
     if not recordings.data:
@@ -200,8 +223,14 @@ def get_teacher_stats() -> TeacherStats:
 
 
 def dashboard():
+    cl = st.sidebar.radio(
+        "Classes Taught", st.session_state.class_name_id_mapping.keys()
+    )
+    class_id = st.session_state.class_name_id_mapping[cl]
     if "teacher_stats" not in st.session_state:
-        st.session_state["teacher_stats"] = get_teacher_stats()
+        st.session_state["teacher_stats"] = {class_id: get_teacher_stats(class_id)}
+    elif class_id not in st.session_state.teacher_stats:
+        st.session_state.teacher_stats[class_id] = get_teacher_stats(class_id)
 
     with st.sidebar:
         dashboard_option = option_menu(
@@ -211,11 +240,11 @@ def dashboard():
         )
     match dashboard_option:
         case "Participation":
-            render_participation_charts(st.session_state.teacher_stats)
+            render_participation_charts(st.session_state.teacher_stats[class_id])
         case "Pairwise Interaction":
-            render_pairwise_charts(st.session_state.teacher_stats)
+            render_pairwise_charts(st.session_state.teacher_stats[class_id])
         case "Teacher Interruption":
-            render_interruption_charts(st.session_state.teacher_stats)
+            render_interruption_charts(st.session_state.teacher_stats[class_id])
 
 
 def login_submit(is_login: bool):

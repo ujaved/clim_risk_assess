@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from recording_processor import RecordingProcessor
 import streamlit as st
 import pandas as pd
+from datetime import date
 
 
 @st.cache_data
@@ -16,9 +17,15 @@ class TeacherStats:
     students: set[str] = field(default_factory=set)
     tab: any = None
 
-    def get_participation_stats_df(self) -> pd.DataFrame:
+    def get_participation_stats_df(
+        self, start_date: date | None = None, end_date: date | None = None
+    ) -> pd.DataFrame:
         data = []
         for rp in self.recording_processors:
+            if start_date and start_date > rp.ts.date():
+                continue
+            if end_date and end_date < rp.ts.date():
+                continue
             for speaker, stats in rp.speaker_stats.items():
                 for stat_name in stats.keys():
                     data.append(
@@ -27,10 +34,15 @@ class TeacherStats:
         df = pd.DataFrame(data, columns=["date", "speaker", "metric", "value"])
         return df
 
-    def get_teacher_interruption_df(self) -> pd.DataFrame:
+    def get_teacher_interruption_df(
+        self, start_date: date | None = None, end_date: date | None = None
+    ) -> pd.DataFrame:
         data = []
         for rp in self.recording_processors:
-            interruption_count = {}
+            if start_date and start_date > rp.ts.date():
+                continue
+            if end_date and end_date < rp.ts.date():
+                continue
             for i, d in enumerate(rp.dialogue[1 : len(rp.dialogue) - 1], start=1):
                 # we consider 3-dialogue blocks with the middle (current) potentially representing a teacher interruption
                 if d[0] != self.name or rp.dialogue[i - 1][0] != rp.dialogue[i + 1][0]:
@@ -45,11 +57,17 @@ class TeacherStats:
                 )
         return pd.DataFrame(data)
 
-    def get_pairwise_following_df(self) -> tuple[pd.DataFrame, pd.DataFrame]:
+    def get_pairwise_following_df(
+        self, start_date: date | None = None, end_date: date | None = None
+    ) -> tuple[pd.DataFrame, pd.DataFrame]:
         data = []
         pairwise_agg_count = {}
         num_agg_turns = {}
         for rp in self.recording_processors:
+            if start_date and start_date > rp.ts.date():
+                continue
+            if end_date and end_date < rp.ts.date():
+                continue
             dialogue_without_teacher = [d for d in rp.dialogue if d[0] != self.name]
             pairwise_count = {}
             num_turns = {}
@@ -79,7 +97,9 @@ class TeacherStats:
                 {
                     "lead": p[0],
                     "follow": p[1],
-                    "normalized_count": float(f"{float(count) / num_agg_turns[p[1]]:.2f}"),
+                    "normalized_count": float(
+                        f"{float(count) / num_agg_turns[p[1]]:.2f}"
+                    ),
                 }
                 for p, count in pairwise_agg_count.items()
             ]
