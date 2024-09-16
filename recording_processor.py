@@ -1,29 +1,32 @@
 import webvtt
 from typing import TypedDict
-import pandas as pd
 from chatbot import NumQuestionsParams
 from openai import OpenAI
 import json
 from chatbot import Chatbot
 from datetime import datetime
 from supabase import Client
+from dataclasses import dataclass
+from collections import defaultdict
 
 
-class SpeakerStats(TypedDict):
-    num_words: int
-    speaking_time: int
-    num_turns: int
-    num_questions: int
-    mean_word_speed: float
-    mean_words_per_turn: float
+@dataclass
+class SpeakerStats:
+    num_words: int = 0
+    speaking_time: int = 0
+    num_turns: int = 0
+    num_questions: int = 0
+    mean_word_speed: float = 0.0
+    mean_words_per_turn: float = 0.0
 
-    @staticmethod
-    def keys():
-        return SpeakerStats.__dict__["__annotations__"].keys()
-
-
-class ClassroomStats(TypedDict):
-    num_questions: int
+    def transform(self) -> dict:
+        return {
+            "Speaking Time (mins)": self.speaking_time / 60,
+            "Number of turns": self.num_turns,
+            "Number of questions": self.num_questions,
+            "Mean number of words per sec": self.mean_word_speed,
+            "Mean number of words per turn": self.mean_words_per_turn,
+        }
 
 
 class RecordingProcessor:
@@ -61,6 +64,35 @@ class RecordingProcessor:
         arguments = json.loads(response.choices[0].message.function_call.arguments)
         return arguments
 
+    def get_2_way_conversations(
+        self, speaker: str
+    ) -> dict[str, list[list[tuple[str, str]]]]:
+        """
+        get_2_way_conversations isolates all 2-person conversations involving the given speaker. e.g. teacher.
+        the resulting dict is indexed by the second person in the conversation
+        """
+
+        rv = defaultdict(list)
+        cur_conversation = []
+        prev_triple = (None, None, None)
+        for i, d in enumerate(self.dialogue[1 : len(self.dialogue) - 1], start=1):
+            participant = self.dialogue[i - 1][0]
+            cur_triple = (self.dialogue[i - 1], d, self.dialogue[i + 1])
+            if cur_triple[1][0] != speaker or cur_triple[0][0] != cur_triple[2][0]:
+                continue
+            if prev_triple[2] != cur_triple[0]:
+                # start of a new conversation
+                if cur_conversation:
+                    rv[participant].append(cur_conversation)
+                cur_conversation = [cur_triple[0], cur_triple[1], cur_triple[2]]
+            else:
+                # same conversation
+                cur_conversation.append(cur_triple[1])
+                cur_conversation.append(cur_triple[2])
+            prev_triple = cur_triple
+        rv[participant].append(cur_conversation)
+        return rv
+
     def process(self):
         prev_speaker = None
         prev_content = None
@@ -69,22 +101,16 @@ class RecordingProcessor:
             fields = caption.text.split(":")
             speaker = fields[0].lower()
             if speaker not in self.speaker_stats:
-                self.speaker_stats[speaker] = {
-                    "num_words": 0,
-                    "num_turns": 0,
-                    "speaking_time": 0,
-                    "mean_words_per_sec": 0.0,
-                    "mean_words_per_turn": 0.0,
-                }
+                self.speaker_stats[speaker] = SpeakerStats()
             content = fields[1]
-            self.speaker_stats[speaker]["num_words"] += len(content.strip().split())
-            self.speaker_stats[speaker]["speaking_time"] += (
+            self.speaker_stats[speaker].num_words += len(content.strip().split())
+            self.speaker_stats[speaker].speaking_time += (
                 caption.end_in_seconds - caption.start_in_seconds
             )
             if prev_speaker == speaker:
                 prev_content = f"{prev_content}{content}".strip()
             else:
-                self.speaker_stats[speaker]["num_turns"] += 1
+                self.speaker_stats[speaker].num_turns += 1
                 self.dialogue.append(
                     (
                         prev_speaker,
@@ -101,8 +127,8 @@ class RecordingProcessor:
             (prev_speaker, prev_content, caption.end_in_seconds - cur_turn_start)
         )
         for stats in self.speaker_stats.values():
-            stats["mean_words_per_sec"] = stats["num_words"] / stats["speaking_time"]
-            stats["mean_words_per_turn"] = stats["num_words"] / stats["num_turns"]
+            stats.mean_word_speed = stats.num_words / stats.speaking_time
+            stats.mean_words_per_turn = stats.num_words / stats.num_turns
 
         recording_stats = (
             self.db_client.table("recording_stats")
@@ -120,4 +146,4 @@ class RecordingProcessor:
             ).execute()
         num_questions = NumQuestionsParams(**json)
         for qc in num_questions.num_questions:
-            self.speaker_stats[qc.speaker]["num_questions"] = qc.question_count
+            self.speaker_stats[qc.speaker].num_questions = qc.question_count

@@ -27,9 +27,15 @@ class TeacherStats:
             if end_date and end_date < rp.ts.date():
                 continue
             for speaker, stats in rp.speaker_stats.items():
-                for stat_name in stats.keys():
+                transformed_stats = stats.transform()
+                for stat_name in transformed_stats.keys():
                     data.append(
-                        (rp.ts.date().isoformat(), speaker, stat_name, stats[stat_name])
+                        (
+                            rp.ts.date().isoformat(),
+                            speaker,
+                            stat_name,
+                            transformed_stats[stat_name],
+                        )
                     )
         df = pd.DataFrame(data, columns=["date", "speaker", "metric", "value"])
         return df

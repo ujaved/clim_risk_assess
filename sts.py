@@ -104,8 +104,8 @@ def render_participation_charts(teacher_stats: TeacherStats):
                 alt.Color("speaker"),
                 tooltip=["value", "date"],
             )
-            .properties(width=200)
-            .facet(facet="metric", spacing=100, title="", columns=3)
+            .properties(width=300)
+            .facet(facet="metric", spacing=100, title="", columns=2)
             .resolve_scale(y="independent", x="independent")
         )
         if not st.checkbox("Show teacher data"):
@@ -114,6 +114,29 @@ def render_participation_charts(teacher_stats: TeacherStats):
 
 
 def render_interruption_charts(teacher_stats: TeacherStats):
+    if st.sidebar.checkbox("**Training examples**", value=True):
+        st.subheader("Label a teacher utterance as interruption or not", divider=True)
+        date = st.selectbox("Date", [rp.ts.date() for rp in teacher_stats.recording_processors])
+        idx = [rp.ts.date() for rp in teacher_stats.recording_processors].index(date)
+        convs = teacher_stats.recording_processors[idx].get_2_way_conversations(
+            teacher_stats.name
+        )
+        student = st.selectbox("Student", convs.keys(), index=None)
+        if student:
+            studnet_convs = convs[student]
+            for i, conv in enumerate(studnet_convs):
+                for j, c in enumerate(conv):
+                    if c[0] == teacher_stats.name:
+                        with st.chat_message("ai"):
+                            col1, col2 = st.columns(2)
+                            col1.write(c[1])
+                            col2.feedback(key=student+str(i)+str(j))
+                    else:
+                        with st.chat_message("user"):
+                            st.write(c[1])
+                st.divider()
+        return
+    
     st.subheader("Possible interruptions by teacher", divider=True)
     with st.container(border=True):
         col1, col2 = st.columns(2)
