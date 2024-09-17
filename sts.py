@@ -1,7 +1,5 @@
 import streamlit as st
-from utils import ZoomClient
-import requests
-from recording_processor import RecordingProcessor, SpeakerStats
+from recording_processor import RecordingProcessor, MetricName
 from teacher_stats import TeacherStats
 from chatbot import OpenAIChatbot
 from dateutil import parser
@@ -89,26 +87,58 @@ def add_recording():
 
 def render_participation_charts(teacher_stats: TeacherStats):
     st.subheader("Aggregate Participation Metrics", divider=True)
+    show_teacher_data = st.checkbox("Show teacher data")
     with st.container(border=True):
         col1, col2 = st.columns(2)
         df = teacher_stats.get_participation_stats_df(
             col1.date_input("start date", value=None),
             col2.date_input("end date", value=None),
         )
+
+        st.subheader("Speaking Time (minutes)")
+        speaking_time_chart = (
+            alt.Chart(df)
+            .mark_line(point=True, size=2)
+            .encode(
+                alt.X("date:O"),
+                alt.Y("value").title(None),
+                alt.Color("speaker"),
+                tooltip=["value", "date"],
+            )
+        )
+        if st.checkbox("As fraction of class duration"):
+            speaking_time_chart = speaking_time_chart.transform_filter(
+                datum.metric == MetricName.FRACTION_SPEAKING_TIME.value
+            )
+        else:
+            speaking_time_chart = speaking_time_chart.transform_filter(
+                datum.metric == MetricName.SPEAKING_TIME_MINS.value
+            )
+        if not show_teacher_data:
+            speaking_time_chart = speaking_time_chart.transform_filter(
+                datum.speaker != teacher_stats.name
+            )
+        st.altair_chart(speaking_time_chart, use_container_width=True)
+        st.divider()
+
         chart = (
             alt.Chart(df)
             .mark_line(point=True, size=2)
             .encode(
                 alt.X("date:O"),
-                alt.Y("value").title(""),
+                alt.Y("value").title(None),
                 alt.Color("speaker"),
                 tooltip=["value", "date"],
             )
             .properties(width=300)
             .facet(facet="metric", spacing=100, title="", columns=2)
             .resolve_scale(y="independent", x="independent")
+            .transform_filter(
+                (datum.metric != MetricName.SPEAKING_TIME_MINS.value)
+                & (datum.metric != MetricName.FRACTION_SPEAKING_TIME.value)
+            )
         )
-        if not st.checkbox("Show teacher data"):
+        if not show_teacher_data:
             chart = chart.transform_filter(datum.speaker != teacher_stats.name)
         st.altair_chart(chart)
 
@@ -116,7 +146,9 @@ def render_participation_charts(teacher_stats: TeacherStats):
 def render_interruption_charts(teacher_stats: TeacherStats):
     if st.sidebar.checkbox("**Training examples**", value=True):
         st.subheader("Label a teacher utterance as interruption or not", divider=True)
-        date = st.selectbox("Date", [rp.ts.date() for rp in teacher_stats.recording_processors])
+        date = st.selectbox(
+            "Date", [rp.ts.date() for rp in teacher_stats.recording_processors]
+        )
         idx = [rp.ts.date() for rp in teacher_stats.recording_processors].index(date)
         convs = teacher_stats.recording_processors[idx].get_2_way_conversations(
             teacher_stats.name
@@ -130,13 +162,13 @@ def render_interruption_charts(teacher_stats: TeacherStats):
                         with st.chat_message("ai"):
                             col1, col2 = st.columns(2)
                             col1.write(c[1])
-                            col2.feedback(key=student+str(i)+str(j))
+                            col2.feedback(key=student + str(i) + str(j))
                     else:
                         with st.chat_message("user"):
                             st.write(c[1])
                 st.divider()
         return
-    
+
     st.subheader("Possible interruptions by teacher", divider=True)
     with st.container(border=True):
         col1, col2 = st.columns(2)

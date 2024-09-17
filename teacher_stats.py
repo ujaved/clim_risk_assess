@@ -27,7 +27,7 @@ class TeacherStats:
             if end_date and end_date < rp.ts.date():
                 continue
             for speaker, stats in rp.speaker_stats.items():
-                transformed_stats = stats.transform()
+                transformed_stats = stats.transform(rp.class_duration_in_secs)
                 for stat_name in transformed_stats.keys():
                     data.append(
                         (

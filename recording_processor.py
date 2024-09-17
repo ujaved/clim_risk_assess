@@ -1,5 +1,4 @@
 import webvtt
-from typing import TypedDict
 from chatbot import NumQuestionsParams
 from openai import OpenAI
 import json
@@ -8,6 +7,16 @@ from datetime import datetime
 from supabase import Client
 from dataclasses import dataclass
 from collections import defaultdict
+from enum import Enum
+
+
+class MetricName(Enum):
+    SPEAKING_TIME_MINS = "speaking_time_(mins)"
+    FRACTION_SPEAKING_TIME = "fraction_speaking_time"
+    NUM_TURNS = "num_turns"
+    NUM_QUESTIONS = "num_questions"
+    MEAN_WORD_SPEAD = "mean_num_words_per_sec"
+    MEAN_NUM_WORDS_PER_TURN = "mean_num_words_per_turn"
 
 
 @dataclass
@@ -19,13 +28,17 @@ class SpeakerStats:
     mean_word_speed: float = 0.0
     mean_words_per_turn: float = 0.0
 
-    def transform(self) -> dict:
+    def transform(self, tot_speaking_time: int) -> dict:
+        fraction_speaking_time = float(
+            f"{float(self.speaking_time) / tot_speaking_time:.2f}"
+        )
         return {
-            "Speaking Time (mins)": self.speaking_time / 60,
-            "Number of turns": self.num_turns,
-            "Number of questions": self.num_questions,
-            "Mean number of words per sec": self.mean_word_speed,
-            "Mean number of words per turn": self.mean_words_per_turn,
+            MetricName.SPEAKING_TIME_MINS.value: self.speaking_time / 60,
+            MetricName.FRACTION_SPEAKING_TIME.value: fraction_speaking_time,
+            MetricName.NUM_TURNS.value: self.num_turns,
+            MetricName.NUM_QUESTIONS.value: self.num_questions,
+            MetricName.MEAN_WORD_SPEAD.value: self.mean_word_speed,
+            MetricName.MEAN_NUM_WORDS_PER_TURN.value: self.mean_words_per_turn,
         }
 
 
@@ -46,6 +59,7 @@ class RecordingProcessor:
         self.speaker_stats: dict[str, SpeakerStats] = {}
         self.chatbot = chatbot
         self.db_client = db_client
+        self.class_duration_in_secs = 0
 
     def get_num_questions(self) -> dict[str, list]:
         prompt = f"Following is a transcript of zoom classroom session. For each speaker tell me the number of questions they ask. \n\n {self.dialogue}"
@@ -97,7 +111,11 @@ class RecordingProcessor:
         prev_speaker = None
         prev_content = None
         cur_turn_start = 0
-        for caption in webvtt.from_string(self.transcript):
+        captions = webvtt.from_string(self.transcript)
+        self.class_duration_in_secs = (
+            captions[-1].end_in_seconds - captions[0].start_in_seconds
+        )
+        for caption in captions:
             fields = caption.text.split(":")
             speaker = fields[0].lower()
             if speaker not in self.speaker_stats:
