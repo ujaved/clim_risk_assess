@@ -92,8 +92,8 @@ class TeacherStats:
                 normalized_count = float(f"{float(count) / num_turns[p[1]]:.2f}")
                 data.append(
                     {
-                        "lead": p[0],
-                        "follow": p[1],
+                        "lead-follow": f"{p[0]}-{p[1]}",
+                        "num_turns_follow": num_turns[p[1]],
                         "normalized_count": normalized_count,
                         "date": rp.ts,
                     }
@@ -101,8 +101,8 @@ class TeacherStats:
         return pd.DataFrame(data), pd.DataFrame(
             [
                 {
-                    "lead": p[0],
-                    "follow": p[1],
+                    "lead-follow": f"{p[0]}-{p[1]}",
+                    "num_turns_follow": num_agg_turns[p[1]],
                     "normalized_count": float(
                         f"{float(count) / num_agg_turns[p[1]]:.2f}"
                     ),

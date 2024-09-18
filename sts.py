@@ -190,7 +190,7 @@ def render_interruption_charts(teacher_stats: TeacherStats):
 
 def render_pairwise_charts(teacher_stats: TeacherStats):
     st.subheader(
-        "Pairwise interaction for a (follow, lead) pair is the fraction of the follow's turns that come directly after the lead's turn",
+        "Pairwise interaction for a (follow, lead) pair is the fraction of the follow's turns that come directly after the lead's turn (with a threshold of at least 10 follow turns)",
         divider=True,
     )
     with st.container(border=True):
@@ -199,42 +199,35 @@ def render_pairwise_charts(teacher_stats: TeacherStats):
             col1.date_input("start date", value=None),
             col2.date_input("end date", value=None),
         )
-        chart_by_date = (
-            alt.Chart(df_by_date)
-            .mark_rect(color="orange", size=5)
-            .encode(
-                alt.X("follow"),
-                alt.Y("lead"),
-                alt.Color("normalized_count"),
-            )
-            .properties(width=200)
-            .facet(facet="date", spacing=150, title="", columns=2)
-        )
 
+        st.info("Click on a bar to get a concrete description for the lead-follow pair")
+
+        threshold = st.slider("threshold fraction", value=0.4, step=0.05)
+        filtered_df_agg = df_agg.loc[
+            (df_agg["num_turns_follow"] > 10) & (df_agg["normalized_count"] >= threshold)
+        ]
         chart_agg = (
-            alt.Chart(df_agg)
-            .mark_rect(color="orange", size=5)
+            alt.Chart(filtered_df_agg)
+            .mark_bar(color="green")
             .encode(
-                alt.X("follow"),
-                alt.Y("lead"),
-                alt.Color("normalized_count"),
+                alt.X("lead-follow", axis=alt.Axis(labelAngle=-45)),
+                alt.Y("normalized_count").title(
+                    "# (lead-follow pairs)/# (follow turns)"
+                ),
+                color=alt.Color("lead-follow"),
             )
+            .properties(height=500)
             .add_params(alt.selection_point())
         )
-        if st.checkbox(
-            "Aggregate (Click on a metrix cell to get a concrete description)",
-            value=True,
-        ):
-            selection = st.altair_chart(
-                chart_agg, use_container_width=True, on_select="rerun"
-            ).selection.param_1
-            if selection:
-                st.info(
-                    f"When {selection[0]['follow']} spoke they followed {selection[0]['lead']}'s turn {selection[0]['normalized_count']*100} % of the time."
-                )
-        else:
-            # selection won't work on this chart since it is a multi-chart
-            st.altair_chart(chart_by_date)
+        # if st.checkbox("Aggregate (Click on a bar to get a concrete description)",value=True):
+        selection = st.altair_chart(
+            chart_agg, use_container_width=True, on_select="rerun"
+        ).selection.param_1
+        if selection:
+            fields = selection[0]["lead-follow"].split("-")
+            st.info(
+                f"When {fields[1]} spoke they followed {fields[0]}'s turn {selection[0]['normalized_count']*100} % of the time."
+            )
 
 
 def get_teacher_stats(class_id: str) -> TeacherStats:
