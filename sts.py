@@ -42,6 +42,7 @@ def add_recording_cb():
         or not st.session_state.get("recording_date")
         or not st.session_state.get("recording_class")
     ):
+        st.error("Input data is missing")
         return
     st.session_state.conn.table("recordings").insert(
         {
@@ -53,6 +54,7 @@ def add_recording_cb():
             ],
         }
     ).execute()
+    st.success("Recording added successfully")
 
 
 def new_class_cb():
