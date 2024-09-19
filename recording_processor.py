@@ -59,7 +59,8 @@ class RecordingProcessor:
         self.speaker_stats: dict[str, SpeakerStats] = {}
         self.chatbot = chatbot
         self.db_client = db_client
-        self.class_duration_in_secs = 0
+        self.class_duration_secs = 0
+        self.class_silence_secs = 0
 
     def get_num_questions(self) -> dict[str, list]:
         prompt = f"Following is a transcript of zoom classroom session. For each speaker tell me the number of questions they ask. \n\n {self.dialogue}"
@@ -110,12 +111,15 @@ class RecordingProcessor:
     def process(self):
         prev_speaker = None
         prev_content = None
+        prev_caption = None
         cur_turn_start = 0
         captions = webvtt.from_string(self.transcript)
-        self.class_duration_in_secs = (
+        self.class_duration_secs = (
             captions[-1].end_in_seconds - captions[0].start_in_seconds
         )
         for caption in captions:
+            if prev_caption:
+                self.class_silence_secs += caption.start_in_seconds - prev_caption.end_in_seconds
             fields = caption.text.split(":")
             speaker = fields[0].lower()
             if speaker not in self.speaker_stats:
@@ -139,6 +143,7 @@ class RecordingProcessor:
                 prev_content = content
                 cur_turn_start = caption.start_in_seconds
             prev_speaker = speaker
+            prev_caption = caption
 
         self.dialogue = self.dialogue[1:]
         self.dialogue.append(

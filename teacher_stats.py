@@ -27,7 +27,7 @@ class TeacherStats:
             if end_date and end_date < rp.ts.date():
                 continue
             for speaker, stats in rp.speaker_stats.items():
-                transformed_stats = stats.transform(rp.class_duration_in_secs)
+                transformed_stats = stats.transform(rp.class_duration_secs)
                 for stat_name in transformed_stats.keys():
                     data.append(
                         (
@@ -39,6 +39,20 @@ class TeacherStats:
                     )
         df = pd.DataFrame(data, columns=["date", "speaker", "metric", "value"])
         return df
+
+    def get_silence_df(
+        self, start_date: date | None = None, end_date: date | None = None
+    ) -> pd.DataFrame:
+        data = []
+        for rp in self.recording_processors:
+            if start_date and start_date > rp.ts.date():
+                continue
+            if end_date and end_date < rp.ts.date():
+                continue
+            data.append(
+                {"date": rp.ts.date().isoformat(), "silence": rp.class_silence_secs/60}
+            )
+        return pd.DataFrame(data)
 
     def get_teacher_interruption_df(
         self, start_date: date | None = None, end_date: date | None = None

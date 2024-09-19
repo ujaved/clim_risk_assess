@@ -206,7 +206,8 @@ def render_pairwise_charts(teacher_stats: TeacherStats):
 
         threshold = st.slider("threshold fraction", value=0.4, step=0.05)
         filtered_df_agg = df_agg.loc[
-            (df_agg["num_turns_follow"] > 10) & (df_agg["normalized_count"] >= threshold)
+            (df_agg["num_turns_follow"] > 10)
+            & (df_agg["normalized_count"] >= threshold)
         ]
         chart_agg = (
             alt.Chart(filtered_df_agg)
@@ -272,6 +273,26 @@ def get_teacher_stats(class_id: str) -> TeacherStats:
     return TeacherStats(name=name, recording_processors=rps)
 
 
+def sentiment_analysis(teacher_stats: TeacherStats):
+    with st.container(border=True):
+        col1, col2 = st.columns(2)
+        df = teacher_stats.get_silence_df(
+            col1.date_input("start date", value=None),
+            col2.date_input("end date", value=None),
+        )
+        st.subheader("Silent time (mins)")
+        silence_chart = (
+            alt.Chart(df)
+            .mark_line(point=True, size=2)
+            .encode(
+                alt.X("date:O"),
+                alt.Y("silence").title(None),
+            )
+        )
+        st.altair_chart(silence_chart, use_container_width=True)
+        st.divider()
+
+
 def dashboard():
     cl = st.sidebar.radio(
         "Classes Taught", st.session_state.class_name_id_mapping.keys()
@@ -285,8 +306,18 @@ def dashboard():
     with st.sidebar:
         dashboard_option = option_menu(
             "Metrics",
-            ["Participation", "Pairwise Interaction", "Teacher Interruption"],
-            icons=["person-raised-hand", "people-fill", "person-arms-up"],
+            [
+                "Participation",
+                "Pairwise Interaction",
+                "Teacher Interruption",
+                "Sentiment Analysis",
+            ],
+            icons=[
+                "person-raised-hand",
+                "people-fill",
+                "person-arms-up",
+                "emoji-heart-eyes",
+            ],
         )
     match dashboard_option:
         case "Participation":
@@ -295,6 +326,8 @@ def dashboard():
             render_pairwise_charts(st.session_state.teacher_stats[class_id])
         case "Teacher Interruption":
             render_interruption_charts(st.session_state.teacher_stats[class_id])
+        case "Sentiment Analysis":
+            sentiment_analysis(st.session_state.teacher_stats[class_id])
 
 
 def login_submit(is_login: bool):
