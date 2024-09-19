@@ -44,17 +44,20 @@ def add_recording_cb():
     ):
         st.error("Input data is missing")
         return
-    st.session_state.conn.table("recordings").insert(
-        {
-            "user_id": st.session_state.user.id,
-            "link": st.session_state.recording_url,
-            "date": st.session_state.recording_date.isoformat(),
-            "class_id": st.session_state["class_name_id_mapping"][
-                st.session_state.get("recording_class")
-            ],
-        }
-    ).execute()
-    st.success("Recording added successfully")
+    try:
+        st.session_state.conn.table("recordings").insert(
+            {
+                "user_id": st.session_state.user.id,
+                "link": st.session_state.recording_url,
+                "date": st.session_state.recording_date.isoformat(),
+                "class_id": st.session_state["class_name_id_mapping"][
+                    st.session_state.get("recording_class")
+                ],
+            }
+        ).execute()
+        st.success("Recording added successfully")
+    except Exception as e:
+        st.error(str(e))
 
 
 def new_class_cb():
@@ -283,13 +286,17 @@ def sentiment_analysis(teacher_stats: TeacherStats):
         st.subheader("Silent time (mins)")
         silence_chart = (
             alt.Chart(df)
-            .mark_line(point=True, size=2)
+            .mark_line(size=2, point={"fill": "white", "filled": False, "size": 100})
             .encode(
                 alt.X("date:O"),
                 alt.Y("silence").title(None),
             )
+            .add_params(alt.selection_point())
         )
-        st.altair_chart(silence_chart, use_container_width=True)
+        selection = st.altair_chart(
+            silence_chart, use_container_width=True, on_select="rerun"
+        ).selection.param_1
+
         st.divider()
 
 
