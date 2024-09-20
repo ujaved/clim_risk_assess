@@ -95,10 +95,10 @@ def render_participation_charts(teacher_stats: TeacherStats):
     show_teacher_data = st.checkbox("Show teacher data")
     with st.container(border=True):
         col1, col2 = st.columns(2)
-        df = teacher_stats.get_participation_stats_df(
-            col1.date_input("start date", value=None),
-            col2.date_input("end date", value=None),
-        )
+        start_date = col1.date_input("start date", value=None, key="start_date")
+        end_date = col2.date_input("start date", value=None, key="end_date")
+        df = teacher_stats.get_participation_stats_df(start_date, end_date)
+        df_silence = teacher_stats.get_silence_df(start_date, end_date)
 
         st.subheader("Speaking Time (minutes)")
         speaking_time_chart = (
@@ -111,14 +111,32 @@ def render_participation_charts(teacher_stats: TeacherStats):
                 tooltip=["value", "date"],
             )
         )
-        if st.checkbox("As fraction of class duration"):
+
+        col3, col4 = st.columns(2)
+        do_frac_class_duration = col3.checkbox("As fraction of class duration")
+        add_silence = col4.checkbox("Add silence")
+        if do_frac_class_duration:
             speaking_time_chart = speaking_time_chart.transform_filter(
                 datum.metric == MetricName.FRACTION_SPEAKING_TIME.value
             )
+            if add_silence:
+                silence_chart = (
+                    alt.Chart(df_silence)
+                    .mark_line(size=2, strokeDash=[4, 4], point=True)
+                    .encode(alt.X("date:O"), alt.Y("silence_fraction"))
+                )
+                speaking_time_chart = speaking_time_chart + silence_chart
         else:
             speaking_time_chart = speaking_time_chart.transform_filter(
                 datum.metric == MetricName.SPEAKING_TIME_MINS.value
             )
+            if add_silence:
+                silence_chart = (
+                    alt.Chart(df_silence)
+                    .mark_line(size=2, strokeDash=[4, 4], point=True)
+                    .encode(alt.X("date:O"), alt.Y("silence_(mins)"))
+                )
+                speaking_time_chart = speaking_time_chart + silence_chart
         if not show_teacher_data:
             speaking_time_chart = speaking_time_chart.transform_filter(
                 datum.speaker != teacher_stats.name
@@ -277,27 +295,7 @@ def get_teacher_stats(class_id: str) -> TeacherStats:
 
 
 def sentiment_analysis(teacher_stats: TeacherStats):
-    with st.container(border=True):
-        col1, col2 = st.columns(2)
-        df = teacher_stats.get_silence_df(
-            col1.date_input("start date", value=None),
-            col2.date_input("end date", value=None),
-        )
-        st.subheader("Silent time (mins)")
-        silence_chart = (
-            alt.Chart(df)
-            .mark_line(size=2, point={"fill": "white", "filled": False, "size": 100})
-            .encode(
-                alt.X("date:O"),
-                alt.Y("silence").title(None),
-            )
-            .add_params(alt.selection_point())
-        )
-        selection = st.altair_chart(
-            silence_chart, use_container_width=True, on_select="rerun"
-        ).selection.param_1
-
-        st.divider()
+    st.divider()
 
 
 def dashboard():

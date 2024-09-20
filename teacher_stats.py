@@ -50,7 +50,13 @@ class TeacherStats:
             if end_date and end_date < rp.ts.date():
                 continue
             data.append(
-                {"date": rp.ts.date().isoformat(), "silence": rp.class_silence_secs/60}
+                {
+                    "date": rp.ts.date().isoformat(),
+                    "silence_(mins)": rp.class_silence_secs / 60,
+                    "silence_fraction": float(
+                        f"{float(rp.class_silence_secs) / rp.class_duration_secs:.2f}"
+                    ),
+                }
             )
         return pd.DataFrame(data)
 
