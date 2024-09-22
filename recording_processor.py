@@ -124,6 +124,7 @@ class RecordingProcessor:
             speaker = fields[0].lower()
             if speaker not in self.speaker_stats:
                 self.speaker_stats[speaker] = SpeakerStats()
+            
             content = fields[1]
             self.speaker_stats[speaker].num_words += len(content.strip().split())
             self.speaker_stats[speaker].speaking_time += (
@@ -170,21 +171,3 @@ class RecordingProcessor:
         num_questions = NumQuestionsParams(**json)
         for qc in num_questions.num_questions:
             self.speaker_stats[qc.speaker].num_questions = qc.question_count
-
-
-
-
-
-"""
-        chart_by_date = (
-            alt.Chart(df_by_date)
-            .mark_rect(color="orange", size=5)
-            .encode(
-                alt.X("follow"),
-                alt.Y("lead"),
-                alt.Color("normalized_count"),
-            )
-            .properties(width=200)
-            .facet(facet="date", spacing=150, title="", columns=2)
-        )
-        """

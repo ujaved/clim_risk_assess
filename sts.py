@@ -213,7 +213,7 @@ def render_interruption_charts(teacher_stats: TeacherStats):
 
 def render_pairwise_charts(teacher_stats: TeacherStats):
     st.subheader(
-        "Pairwise interaction for a (follow, lead) pair is the fraction of the follow's turns that come directly after the lead's turn (with a threshold of at least 10 follow turns)",
+        "Pairwise interaction for a (follow, lead) pair is the conditional likelihood that the follow speaks right after the lead's turn. ",
         divider=True,
     )
     with st.container(border=True):
@@ -225,33 +225,44 @@ def render_pairwise_charts(teacher_stats: TeacherStats):
 
         st.info("Click on a bar to get a concrete description for the lead-follow pair")
 
-        threshold = st.slider("threshold fraction", value=0.4, step=0.05)
+        threshold = st.slider("threshold fraction", value=0.2, step=0.02)
         filtered_df_agg = df_agg.loc[
-            (df_agg["num_turns_follow"] > 10)
-            & (df_agg["normalized_count"] >= threshold)
+            (df_agg["num_turns_follow"] > 10) & (df_agg["cond_prob"] >= threshold)
         ]
         chart_agg = (
             alt.Chart(filtered_df_agg)
             .mark_bar(color="green")
             .encode(
                 alt.X("lead-follow", axis=alt.Axis(labelAngle=-45)),
-                alt.Y("normalized_count").title(
-                    "# (lead-follow pairs)/# (follow turns)"
+                alt.Y("cond_prob").title(
+                    "Conditional probability of (lead,follow) utterance"
                 ),
                 color=alt.Color("lead-follow"),
             )
             .properties(height=500)
             .add_params(alt.selection_point())
         )
-        # if st.checkbox("Aggregate (Click on a bar to get a concrete description)",value=True):
         selection = st.altair_chart(
             chart_agg, use_container_width=True, on_select="rerun"
         ).selection.param_1
         if selection:
             fields = selection[0]["lead-follow"].split("-")
             st.info(
-                f"When {fields[1]} spoke they followed {fields[0]}'s turn {selection[0]['normalized_count']*100} % of the time."
+                f"Conditional probability of {fields[0]}'s turn after {fields[1]}'s turn = (number of {selection[0]['lead-follow']} utterances) /  number of {fields[0]} turns"
             )
+
+        """
+        matrix = (
+            alt.Chart(filtered_df_agg)
+            .mark_rect(color="orange", size=5)
+            .encode(
+                alt.X("follow"),
+                alt.Y("lead"),
+                alt.Color("cond_prob"),
+            )
+        )
+        st.altair_chart(matrix, use_container_width=True)
+        """
 
 
 def get_teacher_stats(class_id: str) -> TeacherStats:

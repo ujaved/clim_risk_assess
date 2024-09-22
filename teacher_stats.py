@@ -98,23 +98,32 @@ class TeacherStats:
             pairwise_count = {}
             num_turns = {}
             for i, d in enumerate(dialogue_without_teacher[1:], start=1):
-                if dialogue_without_teacher[i - 1][0] == d[0]:
+                lead = dialogue_without_teacher[i - 1][0]
+                follow = d[0]
+                if lead == follow:
                     continue
 
-                pair = (dialogue_without_teacher[i - 1][0], d[0])
+                num_turns[lead] = num_turns.get(lead, 0) + 1
+                num_agg_turns[lead] = num_agg_turns.get(lead, 0) + 1
+                num_turns[follow] = num_turns.get(follow, 0) + 1
+                num_agg_turns[follow] = num_agg_turns.get(follow, 0) + 1
 
-                num_turns[d[0]] = num_turns.get(d[0], 0) + 1
-                num_agg_turns[d[0]] = num_agg_turns.get(d[0], 0) + 1
-                pairwise_count[pair] = pairwise_count.get(pair, 0) + 1
-                pairwise_agg_count[pair] = pairwise_agg_count.get(pair, 0) + 1
+                pairwise_count[(lead, follow)] = (
+                    pairwise_count.get((lead, follow), 0) + 1
+                )
+                pairwise_agg_count[(lead, follow)] = (
+                    pairwise_agg_count.get((lead, follow), 0) + 1
+                )
 
             for p, count in pairwise_count.items():
-                normalized_count = float(f"{float(count) / num_turns[p[1]]:.2f}")
+                cond_prob = float(f"{float(count) / num_turns[p[0]]:.2f}")
                 data.append(
                     {
                         "lead-follow": f"{p[0]}-{p[1]}",
+                        "lead": p[0],
+                        "follow": p[1],
                         "num_turns_follow": num_turns[p[1]],
-                        "normalized_count": normalized_count,
+                        "cond_prob": cond_prob,
                         "date": rp.ts,
                     }
                 )
@@ -122,10 +131,10 @@ class TeacherStats:
             [
                 {
                     "lead-follow": f"{p[0]}-{p[1]}",
+                    "lead": p[0],
+                    "follow": p[1],
                     "num_turns_follow": num_agg_turns[p[1]],
-                    "normalized_count": float(
-                        f"{float(count) / num_agg_turns[p[1]]:.2f}"
-                    ),
+                    "cond_prob": float(f"{float(count) / num_agg_turns[p[0]]:.2f}"),
                 }
                 for p, count in pairwise_agg_count.items()
             ]
