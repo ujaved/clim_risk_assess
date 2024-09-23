@@ -123,8 +123,12 @@ def render_participation_charts(teacher_stats: TeacherStats):
             if add_silence:
                 silence_chart = (
                     alt.Chart(df_silence)
-                    .mark_line(size=2, strokeDash=[4, 4], point=True)
-                    .encode(alt.X("date:O"), alt.Y("silence_fraction"))
+                    .mark_line(size=4, strokeDash=[8, 8], point=True)
+                    .encode(
+                        alt.X("date:O"),
+                        alt.Y("silence_fraction"),
+                        alt.Color("silence_type"),
+                    )
                 )
         else:
             speaking_time_chart = speaking_time_chart.transform_filter(
@@ -133,15 +137,21 @@ def render_participation_charts(teacher_stats: TeacherStats):
             if add_silence:
                 silence_chart = (
                     alt.Chart(df_silence)
-                    .mark_line(size=2, strokeDash=[4, 4], point=True)
-                    .encode(alt.X("date:O"), alt.Y("silence_(mins)"))
+                    .mark_line(size=4, strokeDash=[8, 8], point=True)
+                    .encode(
+                        alt.X("date:O"),
+                        alt.Y("silence_(mins)"),
+                        alt.Color("silence_type"),
+                    )
                 )
         if not show_teacher_data:
             speaking_time_chart = speaking_time_chart.transform_filter(
                 datum.speaker != teacher_stats.name
             )
         if silence_chart:
-            speaking_time_chart = speaking_time_chart + silence_chart
+            speaking_time_chart = (speaking_time_chart + silence_chart).resolve_scale(
+                color="independent"
+            )
         st.altair_chart(speaking_time_chart, use_container_width=True)
         st.divider()
 
@@ -270,7 +280,11 @@ def get_teacher_stats(class_id: str) -> TeacherStats:
         return
     df = pd.DataFrame(recordings.data)
     df["has_transcript"] = [r["transcript"] is not None for r in recordings.data]
-    # st.dataframe(df, column_order=["link", "date", "has_transcript"])
+    name = (
+        st.session_state.user.user_metadata["first_name"]
+        + " "
+        + st.session_state.user.user_metadata["last_name"]
+    ).lower()
 
     rps = [
         RecordingProcessor(
@@ -279,6 +293,7 @@ def get_teacher_stats(class_id: str) -> TeacherStats:
             transcript=rec["transcript"],
             chatbot=OpenAIChatbot(model_id="gpt-4-turbo", temperature=0.0),
             db_client=st.session_state["conn"],
+            teacher=name,
         )
         for _, rec in df.iterrows()
         if rec["has_transcript"]
@@ -289,11 +304,6 @@ def get_teacher_stats(class_id: str) -> TeacherStats:
     for rp in rps:
         rp.process()
 
-    name = (
-        st.session_state.user.user_metadata["first_name"]
-        + " "
-        + st.session_state.user.user_metadata["last_name"]
-    ).lower()
     return TeacherStats(name=name, recording_processors=rps)
 
 

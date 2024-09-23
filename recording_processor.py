@@ -49,6 +49,7 @@ class RecordingProcessor:
         id: str,
         ts: datetime,
         transcript: str,
+        teacher: str,
         chatbot: Chatbot,
         db_client: Client,
     ) -> None:
@@ -60,7 +61,9 @@ class RecordingProcessor:
         self.chatbot = chatbot
         self.db_client = db_client
         self.class_duration_secs = 0
-        self.class_silence_secs = 0
+        self.teacher_silence_secs = 0
+        self.student_silence_secs = 0
+        self.teacher = teacher
 
     def get_num_questions(self) -> dict[str, list]:
         prompt = f"Following is a transcript of zoom classroom session. For each speaker tell me the number of questions they ask. \n\n {self.dialogue}"
@@ -118,14 +121,17 @@ class RecordingProcessor:
             captions[-1].end_in_seconds - captions[0].start_in_seconds
         )
         for caption in captions:
-            if prev_caption:
-                self.class_silence_secs += (
-                    caption.start_in_seconds - prev_caption.end_in_seconds
-                )
             fields = caption.text.split(":")
             speaker = fields[0].lower()
             if speaker not in self.speaker_stats:
                 self.speaker_stats[speaker] = SpeakerStats()
+
+            if prev_caption:
+                silence = caption.start_in_seconds - prev_caption.end_in_seconds
+                if speaker == self.teacher:
+                    self.teacher_silence_secs += silence
+                else:
+                    self.student_silence_secs += silence
 
             content = fields[1]
             self.speaker_stats[speaker].num_words += len(content.strip().split())

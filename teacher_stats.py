@@ -52,9 +52,20 @@ class TeacherStats:
             data.append(
                 {
                     "date": rp.ts.date().isoformat(),
-                    "silence_(mins)": rp.class_silence_secs / 60,
+                    "silence_type": "teacher",
+                    "silence_(mins)": rp.teacher_silence_secs / 60,
                     "silence_fraction": float(
-                        f"{float(rp.class_silence_secs) / rp.class_duration_secs:.2f}"
+                        f"{float(rp.teacher_silence_secs) / rp.class_duration_secs:.2f}"
+                    ),
+                }
+            )
+            data.append(
+                {
+                    "date": rp.ts.date().isoformat(),
+                    "silence_type": "student",
+                    "silence_(mins)": rp.student_silence_secs / 60,
+                    "silence_fraction": float(
+                        f"{float(rp.student_silence_secs) / rp.class_duration_secs:.2f}"
                     ),
                 }
             )
