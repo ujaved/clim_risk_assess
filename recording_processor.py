@@ -119,12 +119,14 @@ class RecordingProcessor:
         )
         for caption in captions:
             if prev_caption:
-                self.class_silence_secs += caption.start_in_seconds - prev_caption.end_in_seconds
+                self.class_silence_secs += (
+                    caption.start_in_seconds - prev_caption.end_in_seconds
+                )
             fields = caption.text.split(":")
             speaker = fields[0].lower()
             if speaker not in self.speaker_stats:
                 self.speaker_stats[speaker] = SpeakerStats()
-            
+
             content = fields[1]
             self.speaker_stats[speaker].num_words += len(content.strip().split())
             self.speaker_stats[speaker].speaking_time += (
@@ -171,3 +173,20 @@ class RecordingProcessor:
         num_questions = NumQuestionsParams(**json)
         for qc in num_questions.num_questions:
             self.speaker_stats[qc.speaker].num_questions = qc.question_count
+
+
+"""
+chart_agg = (
+            alt.Chart(df_agg)
+            .mark_bar(color="green")
+            .encode(
+                alt.X("lead-follow", axis=alt.Axis(labelAngle=-45)),
+                alt.Y("cond_prob").title(
+                    "Conditional probability of (lead,follow) utterance"
+                ),
+                color=alt.Color("lead-follow"),
+            )
+            .properties(height=500)
+            .add_params(alt.selection_point())
+        )
+"""

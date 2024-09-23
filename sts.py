@@ -226,43 +226,34 @@ def render_pairwise_charts(teacher_stats: TeacherStats):
         st.info("Click on a bar to get a concrete description for the lead-follow pair")
 
         threshold = st.slider("threshold fraction", value=0.2, step=0.02)
-        filtered_df_agg = df_agg.loc[
-            (df_agg["num_turns_follow"] > 10) & (df_agg["cond_prob"] >= threshold)
-        ]
-        chart_agg = (
-            alt.Chart(filtered_df_agg)
-            .mark_bar(color="green")
+        # filtered_df_agg = df_agg.loc[(df_agg["num_turns_follow"] > 10) & (df_agg["cond_prob"] >= threshold)]
+        df_agg.loc[
+            (df_agg["cond_prob"] < threshold) | (df_agg["num_turns_follow"] < 10),
+            "cond_prob",
+        ] = 0.0
+
+        matrix = (
+            alt.Chart(df_agg)
+            .mark_rect(color="orange", size=10)
             .encode(
-                alt.X("lead-follow", axis=alt.Axis(labelAngle=-45)),
-                alt.Y("cond_prob").title(
+                alt.X("follow"),
+                alt.Y("lead"),
+                alt.Color("cond_prob").title(
                     "Conditional probability of (lead,follow) utterance"
                 ),
-                color=alt.Color("lead-follow"),
             )
             .properties(height=500)
             .add_params(alt.selection_point())
         )
         selection = st.altair_chart(
-            chart_agg, use_container_width=True, on_select="rerun"
+            matrix, use_container_width=True, on_select="rerun"
         ).selection.param_1
         if selection:
-            fields = selection[0]["lead-follow"].split("-")
+            lead = selection[0]["lead"]
+            follow = selection[0]["follow"]
             st.info(
-                f"Conditional probability of {fields[0]}'s turn after {fields[1]}'s turn = (number of {selection[0]['lead-follow']} utterances) /  number of {fields[0]} turns"
+                f"Conditional probability of {follow}'s turn after {lead}'s turn = (number of {lead}-{follow} utterances) /  number of {lead} turns = {selection[0]['cond_prob']}"
             )
-
-        """
-        matrix = (
-            alt.Chart(filtered_df_agg)
-            .mark_rect(color="orange", size=5)
-            .encode(
-                alt.X("follow"),
-                alt.Y("lead"),
-                alt.Color("cond_prob"),
-            )
-        )
-        st.altair_chart(matrix, use_container_width=True)
-        """
 
 
 def get_teacher_stats(class_id: str) -> TeacherStats:
