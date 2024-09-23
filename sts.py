@@ -115,6 +115,7 @@ def render_participation_charts(teacher_stats: TeacherStats):
         col3, col4 = st.columns(2)
         do_frac_class_duration = col3.checkbox("As fraction of class duration")
         add_silence = col4.checkbox("Add silence")
+        silence_chart = None
         if do_frac_class_duration:
             speaking_time_chart = speaking_time_chart.transform_filter(
                 datum.metric == MetricName.FRACTION_SPEAKING_TIME.value
@@ -125,7 +126,6 @@ def render_participation_charts(teacher_stats: TeacherStats):
                     .mark_line(size=2, strokeDash=[4, 4], point=True)
                     .encode(alt.X("date:O"), alt.Y("silence_fraction"))
                 )
-                speaking_time_chart = speaking_time_chart + silence_chart
         else:
             speaking_time_chart = speaking_time_chart.transform_filter(
                 datum.metric == MetricName.SPEAKING_TIME_MINS.value
@@ -136,11 +136,12 @@ def render_participation_charts(teacher_stats: TeacherStats):
                     .mark_line(size=2, strokeDash=[4, 4], point=True)
                     .encode(alt.X("date:O"), alt.Y("silence_(mins)"))
                 )
-                speaking_time_chart = speaking_time_chart + silence_chart
         if not show_teacher_data:
             speaking_time_chart = speaking_time_chart.transform_filter(
                 datum.speaker != teacher_stats.name
             )
+        if silence_chart:
+            speaking_time_chart = speaking_time_chart + silence_chart
         st.altair_chart(speaking_time_chart, use_container_width=True)
         st.divider()
 
