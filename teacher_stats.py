@@ -96,60 +96,51 @@ class TeacherStats:
 
     def get_pairwise_following_df(
         self, start_date: date | None = None, end_date: date | None = None
-    ) -> tuple[pd.DataFrame, pd.DataFrame]:
-        data = []
-        pairwise_agg_count = {}
-        num_agg_turns = {}
+    ) -> pd.DataFrame:
+        pairwise_count = {}
+        num_turns = {}
         for rp in self.recording_processors:
             if start_date and start_date > rp.ts.date():
                 continue
             if end_date and end_date < rp.ts.date():
                 continue
             dialogue_without_teacher = [d for d in rp.dialogue if d[0] != self.name]
-            pairwise_count = {}
-            num_turns = {}
             for i, d in enumerate(dialogue_without_teacher[1:], start=1):
                 lead = dialogue_without_teacher[i - 1][0]
                 follow = d[0]
                 if lead == follow:
                     continue
-
-                num_turns[lead] = num_turns.get(lead, 0) + 1
-                num_agg_turns[lead] = num_agg_turns.get(lead, 0) + 1
                 num_turns[follow] = num_turns.get(follow, 0) + 1
-                num_agg_turns[follow] = num_agg_turns.get(follow, 0) + 1
 
                 pairwise_count[(lead, follow)] = (
                     pairwise_count.get((lead, follow), 0) + 1
                 )
-                pairwise_agg_count[(lead, follow)] = (
-                    pairwise_agg_count.get((lead, follow), 0) + 1
-                )
+            # for speaker, stats in rp.speaker_stats.items():
+            #    if self.name != speaker:
+            #        num_turns[speaker] = num_turns.get(speaker, 0) + stats.num_turns
 
-            for p, count in pairwise_count.items():
-                cond_prob = float(f"{float(count) / num_turns[p[0]]:.2f}")
-                data.append(
-                    {
-                        "lead-follow": f"{p[0]}-{p[1]}",
-                        "lead": p[0],
-                        "follow": p[1],
-                        "num_turns_follow": num_turns[p[1]],
-                        "cond_prob": cond_prob,
-                        "date": rp.ts,
-                    }
-                )
-        return pd.DataFrame(data), pd.DataFrame(
-            [
+        data = []
+        sum_individual_turns = sum([c for _, c in num_turns.items()])
+        prob_turns = {
+            speaker: float(c) / sum_individual_turns for speaker, c in num_turns.items()
+        }
+        sum_pairwise_turns = sum([c for _, c in pairwise_count.items()])
+        for p, count in pairwise_count.items():
+            prob_pairwise = float(count) / sum_pairwise_turns
+            prob_cond = prob_pairwise / prob_turns[p[0]]
+            data.append(
                 {
-                    "lead-follow": f"{p[0]}-{p[1]}",
                     "lead": p[0],
                     "follow": p[1],
-                    "num_turns_follow": num_agg_turns[p[1]],
-                    "cond_prob": float(f"{float(count) / num_agg_turns[p[0]]:.2f}"),
+                    "ratio": prob_cond / prob_turns[p[1]],
+                    "prob_turns_follow": prob_turns[p[1]],
+                    "prob_turns_lead": prob_turns[p[0]],
+                    "prob_pairwise": prob_pairwise,
+                    "prob_cond": prob_cond,
+                    # "cond_prob": float(f"{float(count) / num_turns[p[0]]:.2f}"),
                 }
-                for p, count in pairwise_agg_count.items()
-            ]
-        )
+            )
+        return pd.DataFrame(data)
 
     def render(self):
         with self.tab:

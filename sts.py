@@ -7,7 +7,7 @@ import altair as alt
 from supabase import create_client, Client
 from gotrue.errors import AuthApiError
 import pandas as pd
-from altair import datum
+from altair import datum, expr
 from streamlit_option_menu import option_menu
 
 WELCOME_MSG = "Welcome to Scientifically Taught Science"
@@ -224,34 +224,33 @@ def render_interruption_charts(teacher_stats: TeacherStats):
 
 def render_pairwise_charts(teacher_stats: TeacherStats):
     st.subheader(
-        "Pairwise interaction for a (follow, lead) pair is the conditional likelihood that the follow speaks right after the lead's turn. ",
+        "Pairwise participation for a (lead, follow) pair, given the data, is the conditional probability that the follow speaks right after the lead, divided by random chance that the follow speaks. ",
         divider=True,
     )
     with st.container(border=True):
         col1, col2 = st.columns(2)
-        df_by_date, df_agg = teacher_stats.get_pairwise_following_df(
+        df = teacher_stats.get_pairwise_following_df(
             col1.date_input("start date", value=None),
             col2.date_input("end date", value=None),
         )
 
-        st.info("Click on a bar to get a concrete description for the lead-follow pair")
+        st.info(
+            "Click on a cell to get a concrete description for the (lead,follow) participation metric"
+        )
 
-        threshold = st.slider("threshold fraction", value=0.2, step=0.02)
+        # threshold = st.slider("threshold fraction", value=0.2, step=0.02)
         # filtered_df_agg = df_agg.loc[(df_agg["num_turns_follow"] > 10) & (df_agg["cond_prob"] >= threshold)]
-        df_agg.loc[
-            (df_agg["cond_prob"] < threshold) | (df_agg["num_turns_follow"] < 10),
-            "cond_prob",
-        ] = 0.0
+        # df.loc[(df["cond_prob"] < threshold) | (df["num_turns_follow"] < 10),"cond_prob"] = 0.0
 
         matrix = (
-            alt.Chart(df_agg)
+            alt.Chart(df)
             .mark_rect(color="orange", size=10)
             .encode(
                 alt.X("follow"),
                 alt.Y("lead"),
-                alt.Color("cond_prob").title(
-                    "Conditional probability of (lead,follow) utterance"
-                ),
+                alt.Color("ratio")
+                .scale(scheme="yellowgreen")
+                .title("pairwise participation ratio"),
             )
             .properties(height=500)
             .add_params(alt.selection_point())
@@ -262,9 +261,19 @@ def render_pairwise_charts(teacher_stats: TeacherStats):
         if selection:
             lead = selection[0]["lead"]
             follow = selection[0]["follow"]
-            st.info(
-                f"Conditional probability of {follow}'s turn after {lead}'s turn = (number of {lead}-{follow} utterances) /  number of {lead} turns = {selection[0]['cond_prob']}"
-            )
+            row = df[(df["lead"] == lead) & (df["follow"] == follow)].iloc[0]
+            p_lf = "P_{lf}"
+            p_f_l = "P_{f|l}"
+            explanation = f"""
+            Excluding teacher utterances, the probability of follow **{follow}** speaking $P_f$ is {row['prob_turns_follow']:.2f}.
+            The probability of lead **{lead}** speaking $P_l$ is {row['prob_turns_lead']:.2f}.
+            The empirical probability of the pair **({lead}-{follow})** ${p_lf}$ is (number of pair occurences)/(number of total pair occurences) = {row['prob_pairwise']:.2f}.
+            The conditional probability of **{follow}**'s turn after **{lead}** ${p_f_l}$ = ${p_lf}$/$P_l$ = {row['prob_pairwise']:.2f}/{row['prob_turns_lead']:.2f} = {row['prob_cond']:.2f}.
+            The pairwise participation ratio is ${p_f_l}$ divided by the random chance of follow's turn, i.e., ${p_f_l}$/$P_f$ = {row['prob_cond']:.2f}/{row['prob_turns_follow']:.2f} = {row['ratio']:.2f}.
+            """
+            st.write(explanation)
+            # f"Conditional probability of {follow}'s turn after {lead}'s turn = (number of {lead}-{follow} utterances) /  number of {lead} turns = {selection[0]['prob_cond']}"
+            # )
 
 
 def get_teacher_stats(class_id: str) -> TeacherStats:
@@ -326,7 +335,7 @@ def dashboard():
             "Metrics",
             [
                 "Participation",
-                "Pairwise Interaction",
+                "Pairwise Participation",
                 "Teacher Interruption",
                 "Sentiment Analysis",
             ],
@@ -340,7 +349,7 @@ def dashboard():
     match dashboard_option:
         case "Participation":
             render_participation_charts(st.session_state.teacher_stats[class_id])
-        case "Pairwise Interaction":
+        case "Pairwise Participation":
             render_pairwise_charts(st.session_state.teacher_stats[class_id])
         case "Teacher Interruption":
             render_interruption_charts(st.session_state.teacher_stats[class_id])
