@@ -272,8 +272,67 @@ def render_pairwise_charts(teacher_stats: TeacherStats):
             The pairwise participation ratio is ${p_f_l}$ divided by the random chance of follow's turn, i.e., ${p_f_l}$/$P_f$ = {row['prob_cond']:.2f}/{row['prob_turns_follow']:.2f} = {row['ratio']:.2f}.
             """
             st.write(explanation)
-            # f"Conditional probability of {follow}'s turn after {lead}'s turn = (number of {lead}-{follow} utterances) /  number of {lead} turns = {selection[0]['prob_cond']}"
-            # )
+
+
+def metric_comparison(teacher_stats: TeacherStats):
+    col1, col2 = st.columns(2)
+    col1.multiselect(
+        "Speaker",
+        list(teacher_stats.students) + [teacher_stats.name],
+        key="comprison_speakers",
+    )
+    col2.radio("Metric", [m.value for m in MetricName], key="comparison_metric")
+
+    col3, col4 = st.columns(2)
+    col3.multiselect(
+        "Dates for baseline (mean)",
+        [rp.ts.date() for rp in teacher_stats.recording_processors],
+        key="dates_baseline",
+    )
+    col4.multiselect(
+        "Dates for comparison (mean)",
+        [rp.ts.date() for rp in teacher_stats.recording_processors],
+        key="dates_comparison",
+    )
+
+    if st.button("Compare"):
+        if not st.session_state.comprison_speakers:
+            st.error("Please select at least one speaker")
+        if not st.session_state.comparison_metric:
+            st.error("Please select the participation metric to compare")
+        if not st.session_state.dates_baseline:
+            st.error("Please select at least one class date as the baseline value")
+        if not st.session_state.dates_comparison:
+            st.error("Please select at least one class date as the comparison value")
+
+        data = []
+        for s in st.session_state.comprison_speakers:
+            mean_baseline = 0.0
+            mean_comparison = 0.0
+            for rp in teacher_stats.recording_processors:
+                if rp.ts.date() in st.session_state.dates_baseline:
+                    speaker_stats = rp.speaker_stats[s].transform(
+                        rp.class_duration_secs
+                    )
+                    mean_baseline += speaker_stats[st.session_state.comparison_metric]
+
+                if rp.ts.date() in st.session_state.dates_comparison:
+                    speaker_stats = rp.speaker_stats[s].transform(
+                        rp.class_duration_secs
+                    )
+                    mean_comparison += speaker_stats[st.session_state.comparison_metric]
+            mean_baseline /= len(st.session_state.dates_baseline)
+            mean_comparison /= len(st.session_state.dates_comparison)
+            perc_change = float(mean_comparison - mean_baseline) * 100 / mean_baseline
+            data.append(
+                {
+                    "mean baseline value": mean_baseline,
+                    "mean value to compare": mean_comparison,
+                    "% change": perc_change,
+                }
+            )
+        df = pd.DataFrame(data, index=st.session_state.comprison_speakers)
+        st.dataframe(df, use_container_width=True)
 
 
 def get_teacher_stats(class_id: str) -> TeacherStats:
@@ -336,13 +395,13 @@ def dashboard():
             [
                 "Participation",
                 "Pairwise Participation",
-                "Teacher Interruption",
+                "Comparison",
                 "Sentiment Analysis",
             ],
             icons=[
                 "person-raised-hand",
                 "people-fill",
-                "person-arms-up",
+                "bar-chart-steps",
                 "emoji-heart-eyes",
             ],
         )
@@ -351,8 +410,8 @@ def dashboard():
             render_participation_charts(st.session_state.teacher_stats[class_id])
         case "Pairwise Participation":
             render_pairwise_charts(st.session_state.teacher_stats[class_id])
-        case "Teacher Interruption":
-            render_interruption_charts(st.session_state.teacher_stats[class_id])
+        case "Comparison":
+            metric_comparison(st.session_state.teacher_stats[class_id])
         case "Sentiment Analysis":
             sentiment_analysis(st.session_state.teacher_stats[class_id])
 

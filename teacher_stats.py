@@ -14,8 +14,11 @@ def get_stats_df(meeting_name: str):
 class TeacherStats:
     name: str
     recording_processors: list[RecordingProcessor]  # sorted by time
-    students: set[str] = field(default_factory=set)
+    students: set[str] = None
     tab: any = None
+    
+    def __post_init__(self):
+        self.students = {s for rp in self.recording_processors for s in rp.speaker_stats.keys() if s != self.name}
 
     def get_participation_stats_df(
         self, start_date: date | None = None, end_date: date | None = None
@@ -141,9 +144,3 @@ class TeacherStats:
                 }
             )
         return pd.DataFrame(data)
-
-    def render(self):
-        with self.tab:
-            for rp in self.recording_processors:
-                st.header(rp.name, divider=True)
-                st.dataframe(get_stats_df(rp.name), use_container_width=True)
