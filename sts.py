@@ -274,65 +274,111 @@ def render_pairwise_charts(teacher_stats: TeacherStats):
             st.write(explanation)
 
 
+def metric_comparison_cb(teacher_stats: TeacherStats, container):
+    if st.session_state.start_date_baseline > st.session_state.end_date_baseline:
+        st.error("Baseline start date cannot be later than the end date")
+        return
+    if st.session_state.start_date_comparison > st.session_state.end_date_comparison:
+        st.error("Comparison start date cannot be later than the end date")
+        return
+    data = []
+    for s in st.session_state.comprison_speakers:
+        mean_baseline = 0.0
+        mean_comparison = 0.0
+        num_baseline = 0
+        num_comparison = 0
+        for rp in teacher_stats.recording_processors:
+            if s not in rp.speaker_stats:
+                continue
+            speaker_stats = rp.speaker_stats[s].transform(rp.class_duration_secs)
+            if (
+                rp.ts.date() >= st.session_state.start_date_baseline
+                and rp.ts.date() <= st.session_state.end_date_baseline
+            ):
+                mean_baseline += speaker_stats[st.session_state.comparison_metric]
+                num_baseline += 1
+
+            if (
+                rp.ts.date() >= st.session_state.start_date_comparison
+                and rp.ts.date() <= st.session_state.end_date_comparison
+            ):
+                mean_comparison += speaker_stats[st.session_state.comparison_metric]
+                num_comparison += 1
+        mean_baseline /= num_baseline
+        mean_comparison /= num_comparison
+        perc_change = float(mean_comparison - mean_baseline) * 100 / mean_baseline
+        data.append(
+            {
+                "mean baseline value": mean_baseline,
+                "mean value to compare": mean_comparison,
+                "% change": perc_change,
+            }
+        )
+    if data:
+        with container:
+            st.dataframe(
+                pd.DataFrame(data, index=st.session_state.comprison_speakers),
+                use_container_width=True,
+            )
+
+
 def metric_comparison(teacher_stats: TeacherStats):
     col1, col2 = st.columns(2)
-    col1.multiselect(
-        "Speaker",
-        list(teacher_stats.students) + [teacher_stats.name],
-        key="comprison_speakers",
-    )
-    col2.radio("Metric", [m.value for m in MetricName], key="comparison_metric")
-
     col3, col4 = st.columns(2)
-    col3.multiselect(
-        "Dates for baseline (mean)",
-        [rp.ts.date() for rp in teacher_stats.recording_processors],
-        key="dates_baseline",
+    data_container = st.container()
+    col1.multiselect(
+        "Select a speaker or list of speakers to get comparison statistics",
+        [teacher_stats.name] + list(teacher_stats.students),
+        key="comprison_speakers",
+        placeholder="Choose speaker/s",
+        on_change=metric_comparison_cb,
+        args=(teacher_stats, data_container),
     )
-    col4.multiselect(
-        "Dates for comparison (mean)",
-        [rp.ts.date() for rp in teacher_stats.recording_processors],
-        key="dates_comparison",
+    col2.radio(
+        "Metric",
+        [m.value for m in MetricName],
+        key="comparison_metric",
+        on_change=metric_comparison_cb,
+        args=(teacher_stats, data_container),
     )
 
-    if st.button("Compare"):
-        if not st.session_state.comprison_speakers:
-            st.error("Please select at least one speaker")
-        if not st.session_state.comparison_metric:
-            st.error("Please select the participation metric to compare")
-        if not st.session_state.dates_baseline:
-            st.error("Please select at least one class date as the baseline value")
-        if not st.session_state.dates_comparison:
-            st.error("Please select at least one class date as the comparison value")
-
-        data = []
-        for s in st.session_state.comprison_speakers:
-            mean_baseline = 0.0
-            mean_comparison = 0.0
-            for rp in teacher_stats.recording_processors:
-                if rp.ts.date() in st.session_state.dates_baseline:
-                    speaker_stats = rp.speaker_stats[s].transform(
-                        rp.class_duration_secs
-                    )
-                    mean_baseline += speaker_stats[st.session_state.comparison_metric]
-
-                if rp.ts.date() in st.session_state.dates_comparison:
-                    speaker_stats = rp.speaker_stats[s].transform(
-                        rp.class_duration_secs
-                    )
-                    mean_comparison += speaker_stats[st.session_state.comparison_metric]
-            mean_baseline /= len(st.session_state.dates_baseline)
-            mean_comparison /= len(st.session_state.dates_comparison)
-            perc_change = float(mean_comparison - mean_baseline) * 100 / mean_baseline
-            data.append(
-                {
-                    "mean baseline value": mean_baseline,
-                    "mean value to compare": mean_comparison,
-                    "% change": perc_change,
-                }
-            )
-        df = pd.DataFrame(data, index=st.session_state.comprison_speakers)
-        st.dataframe(df, use_container_width=True)
+    dates = sorted([rp.ts.date() for rp in teacher_stats.recording_processors])
+    col3.date_input(
+        "Start date for baseline range",
+        key="start_date_baseline",
+        value=dates[0],
+        min_value=dates[0],
+        max_value=dates[-1],
+        on_change=metric_comparison_cb,
+        args=(teacher_stats, data_container),
+    )
+    col3.date_input(
+        "End date for baseline range",
+        key="end_date_baseline",
+        value=dates[0],
+        min_value=dates[0],
+        max_value=dates[-1],
+        on_change=metric_comparison_cb,
+        args=(teacher_stats, data_container),
+    )
+    col4.date_input(
+        "Start date for comparison range",
+        key="start_date_comparison",
+        value=dates[-1],
+        min_value=dates[0],
+        max_value=dates[-1],
+        on_change=metric_comparison_cb,
+        args=(teacher_stats, data_container),
+    )
+    col4.date_input(
+        "End date for comparison range",
+        key="end_date_comparison",
+        value=dates[-1],
+        min_value=dates[0],
+        max_value=dates[-1],
+        on_change=metric_comparison_cb,
+        args=(teacher_stats, data_container),
+    )
 
 
 def get_teacher_stats(class_id: str) -> TeacherStats:
