@@ -7,12 +7,10 @@ import altair as alt
 from supabase import create_client, Client
 from gotrue.errors import AuthApiError
 import pandas as pd
-from altair import datum, expr
+from altair import datum
 from streamlit_option_menu import option_menu
 
 WELCOME_MSG = "Welcome to Scientifically Taught Science"
-
-# client = ZoomClient()
 
 
 # Initialize connection.
@@ -27,7 +25,7 @@ def initialize_state():
         classes = (
             st.session_state.conn.table("classes")
             .select("*")
-            .eq("teacher_id", st.session_state["user"].id)
+            .eq("teacher_id", st.session_state.user.id)
             .execute()
         )
         st.session_state["class_name_id_mapping"] = {
@@ -65,6 +63,7 @@ def new_class_cb():
         {
             "name": st.session_state.new_class,
             "teacher_id": st.session_state.user.id,
+            "org_id": st.session_state.org_id,
         }
     ).execute()
     st.session_state.new_class = ""
@@ -429,6 +428,9 @@ def dashboard():
     cl = st.sidebar.radio(
         "Classes Taught", st.session_state.class_name_id_mapping.keys()
     )
+    if cl is None:
+        st.warning("No class or recording yet added")
+        return
     class_id = st.session_state.class_name_id_mapping[cl]
     if "teacher_stats" not in st.session_state:
         st.session_state["teacher_stats"] = {class_id: get_teacher_stats(class_id)}
@@ -462,10 +464,27 @@ def dashboard():
             sentiment_analysis(st.session_state.teacher_stats[class_id])
 
 
+def set_org_id():
+    orgs = st.session_state.conn.table("organizations").select("*").execute()
+    for org in orgs.data:
+        if (
+            org["name"].lower()
+            == st.session_state.user.user_metadata["organization"].lower()
+        ):
+            st.session_state["org_id"] = org["id"]
+            break
+
+    if "org_id" not in st.session_state:
+        st.session_state.conn.table("organizations").insert(
+            {"name": st.session_state.user.user_metadata["organization"]}
+        ).execute()
+        set_org_id()
+
+
 def login_submit(is_login: bool):
     if is_login:
         try:
-            data = st.session_state["conn"].auth.sign_in_with_password(
+            data = st.session_state.conn.auth.sign_in_with_password(
                 {
                     "email": st.session_state.login_email,
                     "password": st.session_state.login_password,
@@ -473,12 +492,22 @@ def login_submit(is_login: bool):
             )
             st.session_state["authenticated"] = True
             st.session_state["user"] = data.user
+            set_org_id()
         except AuthApiError as e:
             st.error(e)
         return
 
     try:
-        st.session_state["conn"].auth.sign_up(
+        if (
+            not st.session_state.register_email
+            or not st.session_state.register_password
+            or not st.session_state.register_first_name
+            or not st.session_state.register_last_name
+            or not st.session_state.register_org
+        ):
+            st.error("Please provide all requested information")
+            return
+        st.session_state.conn.auth.sign_up(
             {
                 "email": st.session_state.register_email,
                 "password": st.session_state.register_password,
@@ -486,6 +515,7 @@ def login_submit(is_login: bool):
                     "data": {
                         "first_name": st.session_state.register_first_name,
                         "last_name": st.session_state.register_last_name,
+                        "organization": st.session_state.register_org,
                     },
                 },
             }
@@ -516,6 +546,7 @@ def register_login():
             st.text_input("Password", type="password", key="register_password")
             st.text_input("First name", key="register_first_name")
             st.text_input("Last name", key="register_last_name")
+            st.text_input("Organization", key="register_org")
             st.form_submit_button("Submit", on_click=login_submit, args=[False])
 
 
