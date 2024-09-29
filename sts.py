@@ -264,11 +264,11 @@ def render_pairwise_charts(teacher_stats: TeacherStats):
             p_lf = "P_{lf}"
             p_f_l = "P_{f|l}"
             explanation = f"""
-            Excluding teacher utterances, the probability of follow **{follow}** speaking $P_f$ is {row['prob_turns_follow']:.2f}.
-            The probability of lead **{lead}** speaking $P_l$ is {row['prob_turns_lead']:.2f}.
-            The empirical probability of the pair **({lead}-{follow})** ${p_lf}$ is (number of pair occurences)/(number of total pair occurences) = {row['prob_pairwise']:.2f}.
-            The conditional probability of **{follow}**'s turn after **{lead}** ${p_f_l}$ = ${p_lf}$/$P_l$ = {row['prob_pairwise']:.2f}/{row['prob_turns_lead']:.2f} = {row['prob_cond']:.2f}.
-            The pairwise participation ratio is ${p_f_l}$ divided by the random chance of follow's turn, i.e., ${p_f_l}$/$P_f$ = {row['prob_cond']:.2f}/{row['prob_turns_follow']:.2f} = {row['ratio']:.2f}.
+            Excluding teacher utterances, the probability of follow **{follow}** speaking $P_f$ is {row['prob_turns_follow']:.4f}.
+            The probability of lead **{lead}** speaking $P_l$ is {row['prob_turns_lead']:.4f}.
+            The empirical probability of the pair **({lead}-{follow})** ${p_lf}$ is (number of pair occurences)/(number of total pair occurences) = {row['prob_pairwise']:.4f}.
+            The conditional probability of **{follow}**'s turn after **{lead}** ${p_f_l}$ = ${p_lf}$/$P_l$ = {row['prob_pairwise']:.4f}/{row['prob_turns_lead']:.4f} = {row['prob_cond']:.4f}.
+            The pairwise participation ratio is ${p_f_l}$ divided by the random chance of follow's turn, i.e., ${p_f_l}$/$P_f$ = {row['prob_cond']:.4f}/{row['prob_turns_follow']:.4f} = {row['ratio']:.4f}.
             """
             st.write(explanation)
 
