@@ -122,6 +122,8 @@ class RecordingProcessor:
         )
         for caption in captions:
             fields = caption.text.split(":")
+            if len(fields) < 2:
+                continue
             speaker = fields[0].lower()
             if speaker not in self.speaker_stats:
                 self.speaker_stats[speaker] = SpeakerStats()
