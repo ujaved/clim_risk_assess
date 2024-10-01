@@ -9,6 +9,9 @@ from gotrue.errors import AuthApiError
 import pandas as pd
 from altair import datum
 from streamlit_option_menu import option_menu
+import numpy as np
+import statsmodels.api as sm
+from scipy.stats import norm
 
 WELCOME_MSG = "Welcome to Scientifically Taught Science"
 
@@ -222,8 +225,9 @@ def render_interruption_charts(teacher_stats: TeacherStats):
 
 
 def render_pairwise_charts(teacher_stats: TeacherStats):
+    # st.subheader("Pairwise participation for a (lead, follow) pair, given the data, is the conditional probability that the follow speaks right after the lead, divided by random chance that the follow speaks. ",divider=True)
     st.subheader(
-        "Pairwise participation for a (lead, follow) pair, given the data, is the conditional probability that the follow speaks right after the lead, divided by random chance that the follow speaks. ",
+        "Pairwise participation for a (lead, follow) pair is a statistically significant Pearson adjusted standardized residual (chi-squared test)",
         divider=True,
     )
     with st.container(border=True):
@@ -232,14 +236,41 @@ def render_pairwise_charts(teacher_stats: TeacherStats):
             col1.date_input("start date", value=None),
             col2.date_input("end date", value=None),
         )
+        contingency_table = []
+        students = sorted(teacher_stats.students)
+        for lead in students:
+            row = [
+                df[(df["lead"] == lead) & (df["follow"] == follow)].iloc[0]["count"]
+                for follow in students
+                if lead != follow
+            ]
+            contingency_table.append(row)
+        table = sm.stats.Table(contingency_table)
+        for i, lead_resids in enumerate(table.standardized_resids):
+            lead = students[i]
+            for j, resid in enumerate(lead_resids):
+                follow = students[j] if j < i else students[j + 1]
+                df.loc[
+                    (df["lead"] == lead) & (df["follow"] == follow),
+                    "standardized_resid",
+                ] = resid
+        num_cells = len(students) * (len(students) - 1)
+
+        alpha = st.slider(
+            "Chi-square significance alpha",
+            value=0.05,
+            min_value=0.01,
+            max_value=0.1,
+            step=0.01,
+        )
+        alpha_bon = alpha / num_cells
+        critical_value = norm.ppf(1 - alpha_bon / 2)
+        df = df.loc[abs(df["standardized_resid"]) >= critical_value]
+        # df.loc[abs(df["standardized_resid"]) < critical_value, "standardized_resid"] = 0.0
 
         st.info(
             "Click on a cell to get a concrete description for the (lead,follow) participation metric"
         )
-
-        # threshold = st.slider("threshold fraction", value=0.2, step=0.02)
-        # filtered_df_agg = df_agg.loc[(df_agg["num_turns_follow"] > 10) & (df_agg["cond_prob"] >= threshold)]
-        # df.loc[(df["cond_prob"] < threshold) | (df["num_turns_follow"] < 10),"cond_prob"] = 0.0
 
         matrix = (
             alt.Chart(df)
@@ -247,9 +278,15 @@ def render_pairwise_charts(teacher_stats: TeacherStats):
             .encode(
                 alt.X("follow"),
                 alt.Y("lead"),
-                alt.Color("ratio")
-                .scale(scheme="yellowgreen")
-                .title("pairwise participation ratio"),
+                alt.Color("standardized_resid")
+                .scale(scheme="turbo")
+                .title(
+                    [
+                        "Pearson standardized",
+                        "residual value",
+                        "(statistically significant)",
+                    ]
+                ),
             )
             .properties(height=500)
             .add_params(alt.selection_point())
@@ -263,14 +300,25 @@ def render_pairwise_charts(teacher_stats: TeacherStats):
             row = df[(df["lead"] == lead) & (df["follow"] == follow)].iloc[0]
             p_lf = "P_{lf}"
             p_f_l = "P_{f|l}"
-            explanation = f"""
+            a = "\alpha"
+            a_b = "\alpha_{b}"
+            N_0_1 = "\mathcal{N}(0,1)_{1-a_b/2}"
+
+            prob_explanation = f"""
             Excluding teacher utterances, the probability of follow **{follow}** speaking $P_f$ is {row['prob_turns_follow']:.4f}.
             The probability of lead **{lead}** speaking $P_l$ is {row['prob_turns_lead']:.4f}.
             The empirical probability of the pair **({lead}-{follow})** ${p_lf}$ is (number of pair occurences)/(number of total pair occurences) = {row['prob_pairwise']:.4f}.
             The conditional probability of **{follow}**'s turn after **{lead}** ${p_f_l}$ = ${p_lf}$/$P_l$ = {row['prob_pairwise']:.4f}/{row['prob_turns_lead']:.4f} = {row['prob_cond']:.4f}.
             The pairwise participation ratio is ${p_f_l}$ divided by the random chance of follow's turn, i.e., ${p_f_l}$/$P_f$ = {row['prob_cond']:.4f}/{row['prob_turns_follow']:.4f} = {row['ratio']:.4f}.
             """
-            st.write(explanation)
+            pearson_explanation = f"""
+            Excluding teacher utterances, the number of **({lead}-{follow})** occurences is {row['count']}.
+            For a {len(students)}x{len(students)-1} contingency table of lead-follow pair utterances, the Pearson adjusted standardized residual is {row['standardized_resid']:.2f}.
+            With the statistical significance $a$ = {alpha}, with the Bonferroni correction $a_b$ = {alpha}/{num_cells} = {alpha_bon:.4f}, the 
+            corresponsing critical value is ${N_0_1}$ = {critical_value:.2f}.
+            Hence {row['standardized_resid']:.2f} is  significantly different than expected under the null hypothesis of no assocation.       
+            """
+            st.write(pearson_explanation)
 
 
 def metric_comparison_cb(teacher_stats: TeacherStats, container):

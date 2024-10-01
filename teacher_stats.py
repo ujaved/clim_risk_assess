@@ -135,12 +135,12 @@ class TeacherStats:
                 {
                     "lead": p[0],
                     "follow": p[1],
+                    "count": count,
                     "ratio": prob_cond / prob_turns[p[1]],
                     "prob_turns_follow": prob_turns[p[1]],
                     "prob_turns_lead": prob_turns[p[0]],
                     "prob_pairwise": prob_pairwise,
                     "prob_cond": prob_cond,
-                    # "cond_prob": float(f"{float(count) / num_turns[p[0]]:.2f}"),
                 }
             )
         return pd.DataFrame(data)

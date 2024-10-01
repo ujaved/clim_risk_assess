@@ -26,6 +26,7 @@ supabase = "*"
 streamlit-url-fragment = "*"
 supabase_auth = "*"
 streamlit_option_menu = "*"
+statsmodels = "*"
 
 [dev-packages]
 
