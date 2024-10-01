@@ -239,11 +239,16 @@ def render_pairwise_charts(teacher_stats: TeacherStats):
         contingency_table = []
         students = sorted(teacher_stats.students)
         for lead in students:
-            row = [
-                df[(df["lead"] == lead) & (df["follow"] == follow)].iloc[0]["count"]
-                for follow in students
-                if lead != follow
-            ]
+            row = []
+            for follow in students:
+                if lead == follow:
+                    continue
+                count = 0
+                if ((df["lead"] == lead) & (df["follow"] == follow)).any():
+                    count = df[(df["lead"] == lead) & (df["follow"] == follow)].iloc[0][
+                        "count"
+                    ]
+                row.append(count)
             contingency_table.append(row)
         table = sm.stats.Table(contingency_table)
         for i, lead_resids in enumerate(table.standardized_resids):
@@ -256,8 +261,9 @@ def render_pairwise_charts(teacher_stats: TeacherStats):
                 ] = resid
         num_cells = len(students) * (len(students) - 1)
 
+        a = "\alpha"
         alpha = st.slider(
-            "Chi-square significance alpha",
+            "Chi-square significance $a$",
             value=0.05,
             min_value=0.01,
             max_value=0.1,
