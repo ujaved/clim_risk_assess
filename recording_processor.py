@@ -159,8 +159,8 @@ class RecordingProcessor:
             (prev_speaker, prev_content, caption.end_in_seconds - cur_turn_start)
         )
         for stats in self.speaker_stats.values():
-            stats.mean_word_speed = stats.num_words / stats.speaking_time
-            stats.mean_words_per_turn = stats.num_words / stats.num_turns
+            stats.mean_word_speed = (stats.num_words / stats.speaking_time) if stats.speaking_time > 0 else 0.0 
+            stats.mean_words_per_turn = (stats.num_words / stats.num_turns) if stats.num_turns > 0 else 0.0
 
         recording_stats = (
             self.db_client.table("recording_stats")
