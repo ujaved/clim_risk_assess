@@ -537,6 +537,14 @@ def set_org_id():
 
 def login_submit(is_login: bool):
     if is_login:
+
+        if (
+            not st.session_state.register_email
+            or not st.session_state.register_password
+        ):
+            st.error("Please provide login information")
+            return
+
         try:
             data = st.session_state.conn.auth.sign_in_with_password(
                 {
