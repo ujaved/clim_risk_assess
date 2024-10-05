@@ -12,6 +12,9 @@ from streamlit_option_menu import option_menu
 import numpy as np
 import statsmodels.api as sm
 from scipy.stats import norm
+from streamlit_url_fragment import get_fragment
+import jwt
+
 
 WELCOME_MSG = "Welcome to Scientifically Taught Science"
 
@@ -537,11 +540,9 @@ def set_org_id():
 
 def login_submit(is_login: bool):
     if is_login:
-
         if not st.session_state.login_email or not st.session_state.login_password:
             st.error("Please provide login information")
             return
-
         try:
             data = st.session_state.conn.auth.sign_in_with_password(
                 {
@@ -559,36 +560,59 @@ def login_submit(is_login: bool):
     try:
         if (
             not st.session_state.register_email
-            or not st.session_state.register_password
             or not st.session_state.register_first_name
             or not st.session_state.register_last_name
             or not st.session_state.register_org
         ):
             st.error("Please provide all requested information")
             return
-        st.session_state.conn.auth.sign_up(
-            {
-                "email": st.session_state.register_email,
-                "password": st.session_state.register_password,
-                "options": {
-                    "data": {
-                        "first_name": st.session_state.register_first_name,
-                        "last_name": st.session_state.register_last_name,
-                        "organization": st.session_state.register_org,
-                    },
-                },
-            }
+        st.session_state.conn.auth.admin.invite_user_by_email(
+            st.session_state.register_email,
+            options={
+                "data": {
+                    "first_name": st.session_state.register_first_name,
+                    "last_name": st.session_state.register_last_name,
+                    "organization": st.session_state.register_org,
+                }
+            },
         )
-        st.session_state["registered"] = True
+        st.info("An email invite has been sent to your email")
     except AuthApiError as e:
         st.error(e)
 
 
-def login():
+def reset_password_submit(user_id: str):
+    if (
+        not st.session_state.reset_password_password
+        or not st.session_state.reset_password_confirm_password
+    ):
+        st.error("Please enter password and confirm password")
+        return
+    if (
+        st.session_state.reset_password_password
+        != st.session_state.reset_password_confirm_password
+    ):
+        st.error("Passwords don't match")
+        return
+    try:
+        data = st.session_state.conn.auth.admin.update_user_by_id(
+            user_id, {"password": st.session_state.reset_password_password}
+        )
+        st.session_state["authenticated"] = True
+        st.session_state["user"] = data.user
+        set_org_id()
+    except AuthApiError as e:
+        st.error(e)
+
+
+def reset_password(email: str, user_id: str):
     with st.form("login_form", clear_on_submit=True):
-        st.text_input("Email", key="login_email")
-        st.text_input("Password", type="password", key="login_password")
-        st.form_submit_button("Login", on_click=login_submit, args=[True])
+        st.text_input("Email", key="reset_password_email", value=email, disabled=True)
+        st.text_input("Password", type="password", key="reset_password_password")
+        st.text_input(
+            "Confirm Password", type="password", key="reset_password_confirm_password"
+        )
+        st.form_submit_button("Submit", on_click=reset_password_submit, args=(user_id,))
 
 
 def register_login():
@@ -602,7 +626,6 @@ def register_login():
     with register_tab:
         with st.form("register", clear_on_submit=True):
             st.text_input("Email", key="register_email")
-            st.text_input("Password", type="password", key="register_password")
             st.text_input("First name", key="register_first_name")
             st.text_input("Last name", key="register_last_name")
             st.text_input("Organization", key="register_org")
@@ -614,24 +637,22 @@ def main():
     st.set_page_config(page_title="STS", page_icon=":teacher:", layout="wide")
     st.session_state["conn"] = init_connection()
 
+    add_recording_pg = st.Page(
+        add_recording, title="Add recording", icon=":material/videocam:"
+    )
+    dashboard_pg = st.Page(
+        dashboard, title="Dashboard", icon=":material/dashboard:", default=True
+    )
+
     if st.session_state.get("authenticated"):
         initialize_state()
-        pg = st.navigation(
-            [
-                st.Page(
-                    dashboard,
-                    title="Dashboard",
-                    icon=":material/dashboard:",
-                    default=True,
-                ),
-                st.Page(
-                    add_recording, title="Add recording", icon=":material/videocam:"
-                ),
-            ]
-        )
+        pg = st.navigation([dashboard_pg, add_recording_pg])
         pg.run()
-    elif st.session_state.get("registered"):
-        login()
+    elif "reset_password" in st.query_params:
+        fragment = get_fragment()
+        acces_token = (fragment.split("access_token=")[1]).split("&")[0]
+        payload = jwt.decode(acces_token, options={"verify_signature": False})
+        reset_password(payload["email"], payload["sub"])
     else:
         register_login()
 
