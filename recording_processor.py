@@ -8,6 +8,7 @@ from supabase import Client
 from dataclasses import dataclass
 from collections import defaultdict
 from enum import Enum
+from difflib import get_close_matches
 
 
 class MetricName(Enum):
@@ -161,8 +162,14 @@ class RecordingProcessor:
             (prev_speaker, prev_content, caption.end_in_seconds - cur_turn_start)
         )
         for stats in self.speaker_stats.values():
-            stats.mean_word_speed = (stats.num_words / stats.speaking_time) if stats.speaking_time > 0 else 0.0 
-            stats.mean_words_per_turn = (stats.num_words / stats.num_turns) if stats.num_turns > 0 else 0.0
+            stats.mean_word_speed = (
+                (stats.num_words / stats.speaking_time)
+                if stats.speaking_time > 0
+                else 0.0
+            )
+            stats.mean_words_per_turn = (
+                (stats.num_words / stats.num_turns) if stats.num_turns > 0 else 0.0
+            )
 
         recording_stats = (
             self.db_client.table("recording_stats")
@@ -180,7 +187,8 @@ class RecordingProcessor:
             ).execute()
         num_questions = NumQuestionsParams(**json)
         for qc in num_questions.num_questions:
-            self.speaker_stats[qc.speaker].num_questions = qc.question_count
+            s = get_close_matches(qc.speaker, list(self.speaker_stats.keys()))[0]
+            self.speaker_stats[s].num_questions = qc.question_count
 
 
 """
