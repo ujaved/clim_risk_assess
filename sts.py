@@ -24,13 +24,12 @@ WELCOME_MSG = "Welcome to Scientifically Taught Science"
 
 
 # Initialize connection.
-# Uses st.cache_resource to only run once.
-@st.cache_resource
+# @st.cache_resource
 def init_connection() -> None:
-    st.session_state["db_client"] = DBClient(
-        st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"]
-    )
-    st.session_state["s3_client"] = boto3.client("s3")
+    if "db_client" not in st.session_state:  
+        st.session_state["db_client"] = DBClient(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
+    if "s3_client" not in st.session_state:      
+        st.session_state["s3_client"] = boto3.client("s3")
 
 
 def initialize_state():
@@ -471,6 +470,10 @@ def sentiment_analysis(teacher_stats: TeacherStats):
     st.divider()
 
 
+def facial_recognition(teacher_stats: TeacherStats):
+    st.divider()
+
+
 def get_class_id() -> str:
     cl = st.sidebar.radio(
         "Classes Taught", st.session_state.class_name_id_mapping.keys()
@@ -555,12 +558,14 @@ def dashboard():
                 "Participation",
                 "Pairwise Participation",
                 "Comparison",
+                "Facial Recognition",
                 "Sentiment Analysis",
             ],
             icons=[
                 "person-raised-hand",
                 "people-fill",
                 "bar-chart-steps",
+                "person-bounding-box",
                 "emoji-heart-eyes",
             ],
         )
@@ -571,6 +576,8 @@ def dashboard():
             render_pairwise_charts(st.session_state.teacher_stats[class_id])
         case "Comparison":
             metric_comparison(st.session_state.teacher_stats[class_id])
+        case "Facial Recognition":
+            facial_recognition(st.session_state.teacher_stats[class_id])
         case "Sentiment Analysis":
             sentiment_analysis(st.session_state.teacher_stats[class_id])
 
