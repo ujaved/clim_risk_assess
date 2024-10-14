@@ -4,7 +4,7 @@ from openai import OpenAI
 import json
 from chatbot import Chatbot
 from datetime import datetime
-from supabase import Client
+from store import DBClient
 from dataclasses import dataclass
 from collections import defaultdict
 from enum import Enum
@@ -52,7 +52,7 @@ class RecordingProcessor:
         transcript: str,
         teacher: str,
         chatbot: Chatbot,
-        db_client: Client,
+        db_client: DBClient,
     ) -> None:
         self.id = id
         self.ts = ts
@@ -171,21 +171,11 @@ class RecordingProcessor:
                 (stats.num_words / stats.num_turns) if stats.num_turns > 0 else 0.0
             )
 
-        recording_stats = (
-            self.db_client.table("recording_stats")
-            .select("num_questions")
-            .eq("recording_id", self.id)
-            .maybe_single()
-            .execute()
-        )
-        if recording_stats:
-            json = recording_stats.data["num_questions"]
-        else:
-            json = self.get_num_questions()
-            self.db_client.table("recording_stats").insert(
-                {"recording_id": self.id, "num_questions": json}
-            ).execute()
-        num_questions = NumQuestionsParams(**json)
+        num_questions_json = self.db_client.get_num_questions(self.id)
+        if not num_questions_json:
+            num_questions_json = self.get_num_questions()
+            self.db_client.insert_num_questions(self.id, num_questions_json)
+        num_questions = NumQuestionsParams(**num_questions_json)
         for qc in num_questions.num_questions:
             s = get_close_matches(qc.speaker, list(self.speaker_stats.keys()))[0]
             self.speaker_stats[s].num_questions = qc.question_count

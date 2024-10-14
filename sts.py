@@ -4,7 +4,6 @@ from teacher_stats import TeacherStats
 from chatbot import OpenAIChatbot
 from dateutil import parser
 import altair as alt
-from supabase import create_client, Client
 from gotrue.errors import AuthApiError
 import pandas as pd
 from altair import datum
@@ -13,7 +12,12 @@ import numpy as np
 import statsmodels.api as sm
 from scipy.stats import norm
 from streamlit_url_fragment import get_fragment
+from store import DBClient
 import jwt
+from io import BytesIO
+from utils import get_s3_object_keys
+import boto3
+import os
 
 
 WELCOME_MSG = "Welcome to Scientifically Taught Science"
@@ -22,21 +26,18 @@ WELCOME_MSG = "Welcome to Scientifically Taught Science"
 # Initialize connection.
 # Uses st.cache_resource to only run once.
 @st.cache_resource
-def init_connection() -> Client:
-    return create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
+def init_connection() -> None:
+    st.session_state["db_client"] = DBClient(
+        st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"]
+    )
+    st.session_state["s3_client"] = boto3.client("s3")
 
 
 def initialize_state():
-    if "class_name_id_mapping" not in st.session_state:
-        classes = (
-            st.session_state.conn.table("classes")
-            .select("*")
-            .eq("teacher_id", st.session_state.user.id)
-            .execute()
-        )
-        st.session_state["class_name_id_mapping"] = {
-            cl["name"]: cl["id"] for cl in classes.data
-        }
+    if "class_name_id_mapping" in st.session_state:
+        return
+    classes = st.session_state.db_client.get_classes(st.session_state.user.id)
+    st.session_state["class_name_id_mapping"] = {cl["name"]: cl["id"] for cl in classes}
 
 
 def add_recording_cb():
@@ -49,29 +50,23 @@ def add_recording_cb():
         st.error("Input data is missing")
         return
     try:
-        st.session_state.conn.table("recordings").insert(
-            {
-                "user_id": st.session_state.user.id,
-                "link": st.session_state.recording_url,
-                "date": st.session_state.recording_date.isoformat(),
-                "class_id": st.session_state["class_name_id_mapping"][
-                    st.session_state.get("recording_class")
-                ],
-            }
-        ).execute()
+        st.session_state.db_client.insert_recording(
+            st.session_state.user.id,
+            st.session_state.recording_url,
+            st.session_state.recording_date,
+            st.session_state["class_name_id_mapping"][
+                st.session_state.get("recording_class")
+            ],
+        )
         st.success("Recording added successfully")
     except Exception as e:
         st.error(str(e))
 
 
 def new_class_cb():
-    st.session_state.conn.table("classes").insert(
-        {
-            "name": st.session_state.new_class,
-            "teacher_id": st.session_state.user.id,
-            "org_id": st.session_state.org_id,
-        }
-    ).execute()
+    st.session_state.db_client.insert_class(
+        st.session_state.new_class, st.session_state.user.id, st.session_state.org_id
+    )
     st.session_state.new_class = ""
     # remove mapping so it gets refreshed
     del st.session_state["class_name_id_mapping"]
@@ -438,18 +433,13 @@ def metric_comparison(teacher_stats: TeacherStats):
 
 
 def get_teacher_stats(class_id: str) -> TeacherStats:
-    recordings = (
-        st.session_state["conn"]
-        .table("recordings")
-        .select("*")
-        .eq("user_id", st.session_state["user"].id)
-        .eq("class_id", class_id)
-        .execute()
+    recordings = st.session_state.db_client.get_recordings(
+        st.session_state["user"].id, class_id
     )
-    if not recordings.data:
+    if not recordings:
         return
-    df = pd.DataFrame(recordings.data)
-    df["has_transcript"] = [r["transcript"] is not None for r in recordings.data]
+    df = pd.DataFrame(recordings)
+    df["has_transcript"] = [r["transcript"] is not None for r in recordings]
     name = (
         st.session_state.user.user_metadata["first_name"]
         + " "
@@ -462,7 +452,7 @@ def get_teacher_stats(class_id: str) -> TeacherStats:
             ts=parser.isoparse(rec["date"]),
             transcript=rec["transcript"],
             chatbot=OpenAIChatbot(model_id="gpt-4-turbo", temperature=0.0),
-            db_client=st.session_state["conn"],
+            db_client=st.session_state.db_client,
             teacher=name,
         )
         for _, rec in df.iterrows()
@@ -481,14 +471,78 @@ def sentiment_analysis(teacher_stats: TeacherStats):
     st.divider()
 
 
-def dashboard():
+def get_class_id() -> str:
     cl = st.sidebar.radio(
         "Classes Taught", st.session_state.class_name_id_mapping.keys()
     )
     if cl is None:
         st.warning("No class or recording yet added")
         return
-    class_id = st.session_state.class_name_id_mapping[cl]
+    return st.session_state.class_name_id_mapping[cl]
+
+
+def label_student_face_cb(class_id: str, key: str, image_s3_key: str):
+    student = st.session_state[key]
+    st.session_state.db_client.insert_student(class_id, student, image_s3_key)
+    st.session_state[key] = None
+
+
+def label_student_faces():
+    class_id = get_class_id()
+
+    students = st.session_state.db_client.get_students(class_id)
+    labeled_students = {s["name"]: s["s3_key"] for s in students if s["s3_key"]}
+    s3_keys = {s["s3_key"] for s in students}
+    num_columns = 2
+
+    st.subheader("Labeled Student faces", divider=True)
+    cols = st.columns(num_columns)
+    for idx, s in enumerate(labeled_students.items()):
+        col = cols[idx % num_columns]
+        image = BytesIO(
+            st.session_state.s3_client.get_object(
+                Bucket=os.getenv("S3_BUCKET"), Key=s[1]
+            )["Body"].read()
+        )
+        with col:
+            st.image(image)
+            st.write(s[0])
+
+    st.subheader("Missing labels", divider=True)
+    image_files = get_s3_object_keys(st.session_state.s3_client, class_id)
+    missing_labels = [i for i in image_files if i not in s3_keys]
+    if not missing_labels:
+        st.info("No missing labels for this class")
+        return
+
+    if "teacher_stats" not in st.session_state:
+        st.session_state["teacher_stats"] = {class_id: get_teacher_stats(class_id)}
+    elif class_id not in st.session_state.teacher_stats:
+        st.session_state.teacher_stats[class_id] = get_teacher_stats(class_id)
+
+    cols = st.columns(num_columns)
+    for idx, m in enumerate(missing_labels):
+        col = cols[idx % num_columns]
+        image = BytesIO(
+            st.session_state.s3_client.get_object(Bucket=os.getenv("S3_BUCKET"), Key=m)[
+                "Body"
+            ].read()
+        )
+        with col:
+            st.image(image)
+            key = f"image_label_{class_id}_{idx}"
+            st.selectbox(
+                "Student",
+                st.session_state.teacher_stats[class_id].students,
+                index=None,
+                key=key,
+                on_change=label_student_face_cb,
+                args=(class_id, key, m),
+            )
+
+
+def dashboard():
+    class_id = get_class_id()
     if "teacher_stats" not in st.session_state:
         st.session_state["teacher_stats"] = {class_id: get_teacher_stats(class_id)}
     elif class_id not in st.session_state.teacher_stats:
@@ -522,8 +576,8 @@ def dashboard():
 
 
 def set_org_id():
-    orgs = st.session_state.conn.table("organizations").select("*").execute()
-    for org in orgs.data:
+    orgs = st.session_state.db_client.get_orgs()
+    for org in orgs:
         if (
             org["name"].lower()
             == st.session_state.user.user_metadata["organization"].lower()
@@ -532,9 +586,9 @@ def set_org_id():
             break
 
     if "org_id" not in st.session_state:
-        st.session_state.conn.table("organizations").insert(
-            {"name": st.session_state.user.user_metadata["organization"]}
-        ).execute()
+        st.session_state.db_client.insert_org(
+            st.session_state.user.user_metadata["organization"]
+        )
         set_org_id()
 
 
@@ -544,14 +598,10 @@ def login_submit(is_login: bool):
             st.error("Please provide login information")
             return
         try:
-            data = st.session_state.conn.auth.sign_in_with_password(
-                {
-                    "email": st.session_state.login_email,
-                    "password": st.session_state.login_password,
-                }
+            st.session_state["user"] = st.session_state.db_client.sign_in(
+                st.session_state.login_email, st.session_state.login_password
             )
             st.session_state["authenticated"] = True
-            st.session_state["user"] = data.user
             set_org_id()
         except AuthApiError as e:
             st.error(e)
@@ -566,15 +616,11 @@ def login_submit(is_login: bool):
         ):
             st.error("Please provide all requested information")
             return
-        st.session_state.conn.auth.admin.invite_user_by_email(
+        st.session_state.db_client.invite_user_by_email(
             st.session_state.register_email,
-            options={
-                "data": {
-                    "first_name": st.session_state.register_first_name,
-                    "last_name": st.session_state.register_last_name,
-                    "organization": st.session_state.register_org,
-                }
-            },
+            st.session_state.register_first_name,
+            st.session_state.register_last_name,
+            st.session_state.register_org,
         )
         st.info("An email invite has been sent to your email")
     except AuthApiError as e:
@@ -595,11 +641,10 @@ def reset_password_submit(user_id: str):
         st.error("Passwords don't match")
         return
     try:
-        data = st.session_state.conn.auth.admin.update_user_by_id(
-            user_id, {"password": st.session_state.reset_password_password}
+        st.session_state["user"] = st.session_state.db_client.update_user_password(
+            user_id, st.session_state.reset_password_password
         )
         st.session_state["authenticated"] = True
-        st.session_state["user"] = data.user
         set_org_id()
     except AuthApiError as e:
         st.error(e)
@@ -635,7 +680,7 @@ def register_login():
 def main():
 
     st.set_page_config(page_title="STS", page_icon=":teacher:", layout="wide")
-    st.session_state["conn"] = init_connection()
+    init_connection()
 
     add_recording_pg = st.Page(
         add_recording, title="Add recording", icon=":material/videocam:"
@@ -643,10 +688,15 @@ def main():
     dashboard_pg = st.Page(
         dashboard, title="Dashboard", icon=":material/dashboard:", default=True
     )
+    label_student_faces_pg = st.Page(
+        label_student_faces,
+        title="Label Student Faces",
+        icon=":material/familiar_face_and_zone:",
+    )
 
     if st.session_state.get("authenticated"):
         initialize_state()
-        pg = st.navigation([dashboard_pg, add_recording_pg])
+        pg = st.navigation([dashboard_pg, add_recording_pg, label_student_faces_pg])
         pg.run()
     elif "reset_password" in st.query_params:
         fragment = get_fragment()
