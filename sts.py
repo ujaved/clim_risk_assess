@@ -495,7 +495,7 @@ def facial_recognition(class_id: str, teacher_stats: TeacherStats):
                 for second in range(i[0], i[1] + 1, 30):
                     df_data.append(
                         {
-                            "student": speakers[speaker_id],
+                            "speaker": speakers[speaker_id],
                             "minutes_into_video": float(second) / 60,
                         }
                     )
@@ -504,19 +504,9 @@ def facial_recognition(class_id: str, teacher_stats: TeacherStats):
         chart = (
             alt.Chart(df)
             .mark_point(size=2)
-            .encode(x="minutes_into_video:Q", y="student:N", color="student")
+            .encode(x="minutes_into_video:Q", y="speaker:N", color="speaker")
         )
         st.altair_chart(chart, use_container_width=True)
-
-
-def get_class_id() -> str:
-    cl = st.sidebar.radio(
-        "Classes Taught", st.session_state.class_name_id_mapping.keys()
-    )
-    if cl is None:
-        st.warning("No class or recording yet added")
-        return
-    return st.session_state.class_name_id_mapping[cl]
 
 
 def label_student_face_cb(class_id: str, key: str, image_s3_key: str):
@@ -526,8 +516,7 @@ def label_student_face_cb(class_id: str, key: str, image_s3_key: str):
 
 
 def label_speaker_faces():
-    class_id = get_class_id()
-
+    class_id = st.session_state.class_name_id_mapping[st.session_state.class_selected]
     speakers = st.session_state.db_client.get_speakers(class_id)
     labeled_speakers = {s["name"]: s["s3_key"] for s in speakers if s["s3_key"]}
     s3_keys = {s["s3_key"] for s in speakers}
@@ -581,7 +570,21 @@ def label_speaker_faces():
 
 
 def dashboard():
-    class_id = get_class_id()
+    idx = 0
+    if "class_selected" in st.session_state:
+        names = list(st.session_state.class_name_id_mapping.keys())
+        for i, cl in enumerate(names):
+            if st.session_state.class_selected == cl:
+                idx = i
+                break
+
+    st.sidebar.radio(
+        "Classes Taught",
+        list(st.session_state.class_name_id_mapping.keys()),
+        index=idx,
+        key="class_selected",
+    )
+    class_id = st.session_state.class_name_id_mapping[st.session_state.class_selected]
     if "teacher_stats" not in st.session_state:
         st.session_state["teacher_stats"] = {class_id: get_teacher_stats(class_id)}
     elif class_id not in st.session_state.teacher_stats:
