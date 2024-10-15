@@ -45,7 +45,16 @@ class DBClient:
             return recording_stats.data["num_questions"]
         return None
 
-    def get_recordings(self, teacher_id: str, class_id: str) -> dict:
+    def get_recording_stats(self, recordind_ids: list[str]) -> list[dict]:
+        return (
+            self.client.table("recording_stats")
+            .select("*")
+            .in_("recording_id", recordind_ids)
+            .execute()
+            .data
+        )
+
+    def get_recordings(self, teacher_id: str, class_id: str) -> list[dict]:
         return (
             self.client.table("recordings")
             .select("*")
@@ -55,7 +64,7 @@ class DBClient:
             .data
         )
 
-    def get_classes(self, teacher_id: str) -> dict:
+    def get_classes(self, teacher_id: str) -> list[dict]:
         return (
             self.client.table("classes")
             .select("*")
@@ -64,17 +73,17 @@ class DBClient:
             .data
         )
 
-    def get_students(self, class_id: str) -> dict:
+    def get_speakers(self, class_id: str) -> dict:
         return (
-            self.client.table("students")
+            self.client.table("speakers")
             .select("*")
             .eq("class_id", class_id)
             .execute()
             .data
         )
 
-    def insert_student(self, class_id: str, name: str, image_s3_key: str) -> None:
-        self.client.table("students").insert(
+    def insert_speaker(self, class_id: str, name: str, image_s3_key: str) -> None:
+        self.client.table("speakers").insert(
             {
                 "class_id": class_id,
                 "name": name,

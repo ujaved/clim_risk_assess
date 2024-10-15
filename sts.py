@@ -26,9 +26,11 @@ WELCOME_MSG = "Welcome to Scientifically Taught Science"
 # Initialize connection.
 # @st.cache_resource
 def init_connection() -> None:
-    if "db_client" not in st.session_state:  
-        st.session_state["db_client"] = DBClient(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
-    if "s3_client" not in st.session_state:      
+    if "db_client" not in st.session_state:
+        st.session_state["db_client"] = DBClient(
+            st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"]
+        )
+    if "s3_client" not in st.session_state:
         st.session_state["s3_client"] = boto3.client("s3")
 
 
@@ -470,8 +472,41 @@ def sentiment_analysis(teacher_stats: TeacherStats):
     st.divider()
 
 
-def facial_recognition(teacher_stats: TeacherStats):
-    st.divider()
+def facial_recognition(class_id: str, teacher_stats: TeacherStats):
+    recording_ids = {rp.id: rp.ts.date() for rp in teacher_stats.recording_processors}
+    recording_stats = st.session_state.db_client.get_recording_stats(
+        recording_ids.keys()
+    )
+    fc_recording_stats = {
+        s["recording_id"]: s["facial_recognition_intervals"]
+        for s in recording_stats
+        if s.get("facial_recognition_intervals")
+    }
+    if not fc_recording_stats:
+        st.info("No facial recognition metrics")
+    speakers = st.session_state.db_client.get_speakers(class_id)
+    speakers = {s["id"]: s["name"] for s in speakers}
+    for recording_id, fc in fc_recording_stats.items():
+        st.subheader(recording_ids[recording_id])
+
+        df_data = []
+        for speaker_id, intervals in fc.items():
+            for i in intervals:
+                for second in range(i[0], i[1] + 1, 30):
+                    df_data.append(
+                        {
+                            "student": speakers[speaker_id],
+                            "minutes_into_video": float(second) / 60,
+                        }
+                    )
+        df = pd.DataFrame(df_data)
+
+        chart = (
+            alt.Chart(df)
+            .mark_point(size=2)
+            .encode(x="minutes_into_video:Q", y="student:N", color="student")
+        )
+        st.altair_chart(chart, use_container_width=True)
 
 
 def get_class_id() -> str:
@@ -486,21 +521,21 @@ def get_class_id() -> str:
 
 def label_student_face_cb(class_id: str, key: str, image_s3_key: str):
     student = st.session_state[key]
-    st.session_state.db_client.insert_student(class_id, student, image_s3_key)
+    st.session_state.db_client.insert_speaker(class_id, student, image_s3_key)
     st.session_state[key] = None
 
 
-def label_student_faces():
+def label_speaker_faces():
     class_id = get_class_id()
 
-    students = st.session_state.db_client.get_students(class_id)
-    labeled_students = {s["name"]: s["s3_key"] for s in students if s["s3_key"]}
-    s3_keys = {s["s3_key"] for s in students}
+    speakers = st.session_state.db_client.get_speakers(class_id)
+    labeled_speakers = {s["name"]: s["s3_key"] for s in speakers if s["s3_key"]}
+    s3_keys = {s["s3_key"] for s in speakers}
     num_columns = 2
 
-    st.subheader("Labeled Student faces", divider=True)
+    st.subheader("Labeled Speaker faces", divider=True)
     cols = st.columns(num_columns)
-    for idx, s in enumerate(labeled_students.items()):
+    for idx, s in enumerate(labeled_speakers.items()):
         col = cols[idx % num_columns]
         image = BytesIO(
             st.session_state.s3_client.get_object(
@@ -523,6 +558,7 @@ def label_student_faces():
     elif class_id not in st.session_state.teacher_stats:
         st.session_state.teacher_stats[class_id] = get_teacher_stats(class_id)
 
+    teacher_stats = st.session_state.teacher_stats[class_id]
     cols = st.columns(num_columns)
     for idx, m in enumerate(missing_labels):
         col = cols[idx % num_columns]
@@ -536,7 +572,7 @@ def label_student_faces():
             key = f"image_label_{class_id}_{idx}"
             st.selectbox(
                 "Student",
-                st.session_state.teacher_stats[class_id].students,
+                [teacher_stats.name] + list(teacher_stats.students),
                 index=None,
                 key=key,
                 on_change=label_student_face_cb,
@@ -577,7 +613,7 @@ def dashboard():
         case "Comparison":
             metric_comparison(st.session_state.teacher_stats[class_id])
         case "Facial Recognition":
-            facial_recognition(st.session_state.teacher_stats[class_id])
+            facial_recognition(class_id, st.session_state.teacher_stats[class_id])
         case "Sentiment Analysis":
             sentiment_analysis(st.session_state.teacher_stats[class_id])
 
@@ -695,15 +731,15 @@ def main():
     dashboard_pg = st.Page(
         dashboard, title="Dashboard", icon=":material/dashboard:", default=True
     )
-    label_student_faces_pg = st.Page(
-        label_student_faces,
-        title="Label Student Faces",
+    label_speaker_faces_pg = st.Page(
+        label_speaker_faces,
+        title="Label Speaker Faces",
         icon=":material/familiar_face_and_zone:",
     )
 
     if st.session_state.get("authenticated"):
         initialize_state()
-        pg = st.navigation([dashboard_pg, add_recording_pg, label_student_faces_pg])
+        pg = st.navigation([dashboard_pg, add_recording_pg, label_speaker_faces_pg])
         pg.run()
     elif "reset_password" in st.query_params:
         fragment = get_fragment()
