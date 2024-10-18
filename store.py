@@ -12,12 +12,12 @@ class DBClient:
         ).user
 
     def update_user_password(self, user_id: str, password: str):
-        return self.client.auth.update_user_by_id(user_id, {"password": password}).user
+        return self.client.auth.admin.update_user_by_id(user_id, {"password": password}).user
 
     def invite_user_by_email(
         self, email: str, first_name: str, last_name: str, org: str
     ) -> None:
-        self.client.auth.auth.admin.invite_user_by_email(
+        self.client.auth.admin.invite_user_by_email(
             email,
             options={
                 "data": {
