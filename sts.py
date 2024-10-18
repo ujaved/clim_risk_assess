@@ -569,7 +569,7 @@ def label_speaker_faces():
             )
 
 
-def get_class_id() -> str:
+def get_class_id() -> str | None:
     idx = 0
     if "class_selected" in st.session_state:
         names = list(st.session_state.class_name_id_mapping.keys())
@@ -584,11 +584,13 @@ def get_class_id() -> str:
         index=idx,
         key="class_selected",
     )
-    return st.session_state.class_name_id_mapping[st.session_state.class_selected]
+    return st.session_state.class_name_id_mapping.get(st.session_state.class_selected)
 
 
 def dashboard():
     class_id = get_class_id()
+    if class_id is None:
+        return
     if "teacher_stats" not in st.session_state:
         st.session_state["teacher_stats"] = {class_id: get_teacher_stats(class_id)}
     elif class_id not in st.session_state.teacher_stats:
