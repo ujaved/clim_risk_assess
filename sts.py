@@ -433,12 +433,12 @@ def metric_comparison(teacher_stats: TeacherStats):
     )
 
 
-def get_teacher_stats(class_id: str) -> TeacherStats:
+def get_teacher_stats(class_id: str) -> TeacherStats | None:
     recordings = st.session_state.db_client.get_recordings(
         st.session_state["user"].id, class_id
     )
     if not recordings:
-        return
+        return None
     df = pd.DataFrame(recordings)
     df["has_transcript"] = [r["transcript"] is not None for r in recordings]
     name = (
@@ -461,7 +461,7 @@ def get_teacher_stats(class_id: str) -> TeacherStats:
     ]
 
     if not rps:
-        return
+        return None
     for rp in rps:
         rp.process()
 
@@ -593,7 +593,7 @@ def dashboard():
         return
     if "teacher_stats" not in st.session_state:
         st.session_state["teacher_stats"] = {class_id: get_teacher_stats(class_id)}
-    elif class_id not in st.session_state.teacher_stats:
+    elif st.session_state.teacher_stats.get(class_id) is None:
         st.session_state.teacher_stats[class_id] = get_teacher_stats(class_id)
 
     with st.sidebar:
@@ -614,6 +614,9 @@ def dashboard():
                 "emoji-heart-eyes",
             ],
         )
+
+    if st.session_state.teacher_stats.get(class_id) is None:
+        return
     match dashboard_option:
         case "Participation":
             render_participation_charts(st.session_state.teacher_stats[class_id])
