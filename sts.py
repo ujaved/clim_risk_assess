@@ -447,6 +447,11 @@ def get_teacher_stats(class_id: str) -> TeacherStats | None:
         + st.session_state.user.user_metadata["last_name"]
     ).lower()
 
+    speakers = st.session_state.db_client.get_speakers(class_id)
+    name_mapping = {
+        a: s["name"] for s in speakers if s["alt_names"] for a in s["alt_names"]
+    }
+
     rps = [
         RecordingProcessor(
             id=rec["id"],
@@ -455,6 +460,7 @@ def get_teacher_stats(class_id: str) -> TeacherStats | None:
             chatbot=OpenAIChatbot(model_id="gpt-4-turbo", temperature=0.0),
             db_client=st.session_state.db_client,
             teacher=name,
+            name_mapping=name_mapping,
         )
         for _, rec in df.iterrows()
         if rec["has_transcript"]
@@ -465,7 +471,7 @@ def get_teacher_stats(class_id: str) -> TeacherStats | None:
     for rp in rps:
         rp.process()
 
-    return TeacherStats(name=name, recording_processors=rps)
+    return TeacherStats(name=name, recording_processors=rps, name_mapping=name_mapping)
 
 
 def sentiment_analysis(teacher_stats: TeacherStats):
@@ -515,8 +521,74 @@ def label_student_face_cb(class_id: str, key: str, image_s3_key: str):
     st.session_state[key] = None
 
 
-def label_speaker_faces():
+def name_mapping_cb(
+    class_id: str, new_name_mapping: pd.DataFrame, current_mapping: dict[str, str]
+):
+    for idx, edited_fields in st.session_state.new_name_mapping_data_editor[
+        "edited_rows"
+    ].items():
+        nick = new_name_mapping[idx]["transcript name"]
+        if edited_fields.get("new student ?"):
+            st.session_state.db_client.insert_speaker(
+                class_id, name=nick, alt_names=[nick]
+            )
+        elif edited_fields.get("mapping options"):
+            name = edited_fields.get("mapping options")
+            curr_alt_names = [k for k, v in current_mapping.items() if v == name]
+            st.session_state.db_client.update_speaker(
+                class_id, name=name, alt_names=curr_alt_names + [nick]
+            )
+
+    # remove teacher stats so that it is refreshed with the new name mappings
+    del st.session_state.teacher_stats[class_id]
+
+
+def label_speakers():
     class_id = get_class_id()
+    if "teacher_stats" not in st.session_state:
+        st.session_state["teacher_stats"] = {}
+    st.session_state.teacher_stats[class_id] = get_teacher_stats(class_id)
+
+    teacher_stats = st.session_state.teacher_stats[class_id]
+
+    cur_name_mapping = [
+        {"transcript name": nick, "actual name": name, "remove": False}
+        for nick, name in teacher_stats.name_mapping.items()
+    ]
+    new_names = [
+        name
+        for name in teacher_stats.students
+        if name not in teacher_stats.name_mapping
+    ]
+    if cur_name_mapping:
+        st.subheader("Current name mappings", divider=True)
+        st.data_editor(
+            cur_name_mapping,
+            hide_index=True,
+            use_container_width=True,
+            disabled=["actual name", "transcript name", "remove"],
+        )
+    if new_names:
+        st.subheader("New name mappings", divider=True)
+        new_name_mapping = [
+            {"transcript name": name, "new student ?": False, "mapping options": ""}
+            for name in new_names
+        ]
+        df = pd.DataFrame(new_name_mapping)
+        df["mapping options"] = df["mapping options"].astype("category")
+        df["mapping options"] = df["mapping options"].cat.add_categories(
+            teacher_stats.name_mapping.values()
+        )
+        st.data_editor(
+            df,
+            hide_index=True,
+            use_container_width=True,
+            on_change=name_mapping_cb,
+            args=(class_id, new_name_mapping, teacher_stats.name_mapping),
+            key="new_name_mapping_data_editor",
+            disabled=["transcript name"],
+        )
+
     speakers = st.session_state.db_client.get_speakers(class_id)
     labeled_speakers = {s["name"]: s["s3_key"] for s in speakers if s["s3_key"]}
     s3_keys = {s["s3_key"] for s in speakers}
@@ -743,15 +815,15 @@ def main():
     dashboard_pg = st.Page(
         dashboard, title="Dashboard", icon=":material/dashboard:", default=True
     )
-    label_speaker_faces_pg = st.Page(
-        label_speaker_faces,
-        title="Label Speaker Faces",
+    label_speakers_pg = st.Page(
+        label_speakers,
+        title="Label Student Names and Faces",
         icon=":material/familiar_face_and_zone:",
     )
 
     if st.session_state.get("authenticated"):
         initialize_state()
-        pg = st.navigation([dashboard_pg, add_recording_pg, label_speaker_faces_pg])
+        pg = st.navigation([dashboard_pg, add_recording_pg, label_speakers_pg])
         pg.run()
     elif "reset_password" in st.query_params:
         fragment = get_fragment()

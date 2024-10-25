@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from recording_processor import RecordingProcessor
 import streamlit as st
 import pandas as pd
@@ -14,6 +14,7 @@ def get_stats_df(meeting_name: str):
 class TeacherStats:
     name: str
     recording_processors: list[RecordingProcessor]  # sorted by time
+    name_mapping: dict[str, str]
     students: set[str] = None
     tab: any = None
     

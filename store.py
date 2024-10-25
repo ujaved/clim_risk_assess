@@ -84,13 +84,30 @@ class DBClient:
             .data
         )
 
-    def insert_speaker(self, class_id: str, name: str, image_s3_key: str) -> None:
+    def insert_speaker(
+        self,
+        class_id: str,
+        name: str,
+        image_s3_key: str | None = None,
+        alt_names: list[str] | None = None,
+    ) -> None:
         self.client.table("speakers").insert(
             {
                 "class_id": class_id,
                 "name": name,
                 "s3_key": image_s3_key,
+                "alt_names": alt_names,
             }
+        ).execute()
+
+    def update_speaker(
+        self,
+        class_id: str,
+        name: str,
+        alt_names: list[str],
+    ) -> None:
+        self.client.table("speakers").update({"alt_names": alt_names}).eq("class_id", class_id).eq(
+            "name", name
         ).execute()
 
     def get_orgs(self) -> dict:

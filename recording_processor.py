@@ -53,6 +53,7 @@ class RecordingProcessor:
         teacher: str,
         chatbot: Chatbot,
         db_client: DBClient,
+        name_mapping: dict[str, str],
     ) -> None:
         self.id = id
         self.ts = ts
@@ -65,6 +66,7 @@ class RecordingProcessor:
         self.teacher_silence_secs = 0
         self.student_silence_secs = 0
         self.teacher = teacher
+        self.name_mapping = name_mapping
 
     def get_num_questions(self) -> dict[str, list]:
         prompt = f"Following is a transcript of zoom classroom session. For each speaker tell me the number of questions they ask. \n\n {self.dialogue}"
@@ -126,6 +128,8 @@ class RecordingProcessor:
             if len(fields) < 2:
                 continue
             speaker = fields[0].lower()
+            if speaker in self.name_mapping:
+                speaker = self.name_mapping[fields[0].lower()]
             if speaker not in self.speaker_stats:
                 self.speaker_stats[speaker] = SpeakerStats()
 
