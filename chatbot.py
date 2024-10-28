@@ -13,13 +13,31 @@ Human: {input}
 AI:
 """
 
+
 class QuestionCount(BaseModel):
     speaker: str = Field(description="name of speaker")
     question_count: int = Field(description="number of questions asked by the speaker")
 
+
 class NumQuestionsParams(BaseModel):
     """get number of questions asked by each speaker in the transcript"""
-    num_questions: list[QuestionCount] = Field(description="list of question counts for each speaker")
+
+    num_questions: list[QuestionCount] = Field(
+        description="list of question counts for each speaker"
+    )
+
+
+class Sentiment(BaseModel):
+    start_time: str = Field(description="Start time of the interval")
+    end_time: str = Field(description="End time of the interval")
+    sentiment: str = Field(description="sentiment/s detected")
+    reasoning: str = Field(description="short description of reasoning")
+
+
+class SentimentAnalysisParams(BaseModel):
+    """Sentiment analysis in the transcript"""
+
+    sentiments: list[Sentiment] = Field(description="list of sentiments detected every specified interval")
 
 
 class StreamlitStreamHandler(BaseCallbackHandler):
@@ -30,6 +48,7 @@ class StreamlitStreamHandler(BaseCallbackHandler):
     def on_llm_new_token(self, token: str, **kwargs):
         self.text += token
         self.container.markdown(self.text)
+
 
 class Chatbot:
     def __init__(self, model_id: str, temperature: float) -> None:
@@ -46,10 +65,15 @@ class OpenAIChatbot(Chatbot):
 
     def __init__(self, model_id: str, temperature: float) -> None:
         super().__init__(model_id=model_id, temperature=temperature)
-        self.llm = ChatOpenAI(model_name=self.model_id,temperature=self.temperature, streaming=True)
-        PROMPT = PromptTemplate(input_variables=["history", "input"], template=PROMPT_TEMPLATE)
-        self.chain = ConversationChain(prompt=PROMPT, llm=self.llm, memory=ConversationBufferMemory(), verbose=True)
-
+        self.llm = ChatOpenAI(
+            model_name=self.model_id, temperature=self.temperature, streaming=True
+        )
+        PROMPT = PromptTemplate(
+            input_variables=["history", "input"], template=PROMPT_TEMPLATE
+        )
+        self.chain = ConversationChain(
+            prompt=PROMPT, llm=self.llm, memory=ConversationBufferMemory(), verbose=True
+        )
 
     def response(self, prompt: str) -> str:
         with get_openai_callback() as cb:

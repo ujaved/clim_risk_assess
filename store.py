@@ -47,6 +47,30 @@ class DBClient:
             return recording_stats.data["num_questions"]
         return None
 
+    def get_sentiment_analysis(self, recording_id: str, interval: int) -> dict | None:
+        sentiment_analysis = (
+            self.client.table("sentiment_analysis")
+            .select("sentiment_analysis")
+            .eq("recording_id", recording_id)
+            .eq("interval", interval)
+            .maybe_single()
+            .execute()
+        )
+        if sentiment_analysis:
+            return sentiment_analysis.data["sentiment_analysis"]
+        return None
+
+    def insert_sentiment_analysis(
+        self, recording_id: str, interval: int, json: dict
+    ) -> None:
+        self.client.table("sentiment_analysis").insert(
+            {
+                "recording_id": recording_id,
+                "interval": interval,
+                "sentiment_analysis": json,
+            }
+        ).execute()
+
     def get_recording_stats(self, recordind_ids: list[str]) -> list[dict]:
         return (
             self.client.table("recording_stats")
@@ -106,9 +130,9 @@ class DBClient:
         name: str,
         alt_names: list[str],
     ) -> None:
-        self.client.table("speakers").update({"alt_names": alt_names}).eq("class_id", class_id).eq(
-            "name", name
-        ).execute()
+        self.client.table("speakers").update({"alt_names": alt_names}).eq(
+            "class_id", class_id
+        ).eq("name", name).execute()
 
     def get_orgs(self) -> dict:
         return self.client.table("organizations").select("*").execute().data

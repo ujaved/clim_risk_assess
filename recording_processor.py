@@ -1,5 +1,5 @@
 import webvtt
-from chatbot import NumQuestionsParams
+from chatbot import NumQuestionsParams, SentimentAnalysisParams
 from openai import OpenAI
 import json
 from chatbot import Chatbot
@@ -84,6 +84,23 @@ class RecordingProcessor:
         )
         arguments = json.loads(response.choices[0].message.function_call.arguments)
         return arguments
+
+    def get_sentiment_analysis(self, interval: int) -> dict[str, list]:
+        schema = SentimentAnalysisParams.schema()
+        prompt = f"Following is a transcript of a group discussion with timestamps. For every interval of {interval} minutes, do sentiment analysis. Be specific and detailed in classifying sentiments, using expressive language. \n\n {self.transcript}"
+        messages = [{"role": "user", "content": prompt}]
+        response = OpenAI().chat.completions.create(
+            model=self.chatbot.model_id,
+            messages=messages,
+            functions=[
+                {
+                    "name": "sentiment_analysis",
+                    "description": schema["description"],
+                    "parameters": SentimentAnalysisParams.schema(),
+                }
+            ],
+        )
+        return json.loads(response.choices[0].message.function_call.arguments)
 
     def get_2_way_conversations(
         self, speaker: str

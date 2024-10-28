@@ -18,6 +18,8 @@ from io import BytesIO
 from utils import get_s3_object_keys
 import boto3
 import os
+from chatbot import SentimentAnalysisParams
+import json
 
 
 WELCOME_MSG = "Welcome to Scientifically Taught Science"
@@ -475,7 +477,36 @@ def get_teacher_stats(class_id: str) -> TeacherStats | None:
 
 
 def sentiment_analysis(teacher_stats: TeacherStats):
-    st.divider()
+
+    date = st.selectbox(
+        "Date", [rp.ts.date() for rp in teacher_stats.recording_processors], index=None
+    )
+    if date is None:
+        return
+    idx = [rp.ts.date() for rp in teacher_stats.recording_processors].index(date)
+
+    duration_mins = int(
+        teacher_stats.recording_processors[idx].class_duration_secs / 60
+    )
+    recording_id = teacher_stats.recording_processors[idx].id
+    interval = st.slider(
+        "Sentiment analysis interval (minutes)",
+        value=int(duration_mins / 10),
+        min_value=1,
+        max_value=duration_mins,
+        step=int(duration_mins / 10),
+    )
+    sentiment_analysis_json = st.session_state.db_client.get_sentiment_analysis(
+        recording_id, interval
+    )
+    if not sentiment_analysis_json:
+        sentiment_analysis_json = teacher_stats.recording_processors[
+            idx
+        ].get_sentiment_analysis(interval)
+        st.session_state.db_client.insert_sentiment_analysis(
+            recording_id, interval, sentiment_analysis_json
+        )
+    st.table(sentiment_analysis_json["sentiments"])
 
 
 def facial_recognition(class_id: str, teacher_stats: TeacherStats):
