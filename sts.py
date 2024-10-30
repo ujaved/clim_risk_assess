@@ -512,6 +512,7 @@ def sentiment_analysis(teacher_stats: TeacherStats):
         key="sentiment_analysis_interval",
     )
     data = []
+    sentiment_analysis_json_by_date = {}
     for rp in rps:
         sentiment_analysis_json = st.session_state.db_client.get_sentiment_analysis(
             rp.id, interval
@@ -520,12 +521,16 @@ def sentiment_analysis(teacher_stats: TeacherStats):
             sentiment_analysis = SentimentAnalysis(**sentiment_analysis_json)
         else:
             sentiment_analysis = rp.get_sentiment_analysis(interval)
+            sentiment_analysis_json = sentiment_analysis.model_dump()
             st.session_state.db_client.insert_sentiment_analysis(
-                rp.id, interval, sentiment_analysis.model_dump()
+                rp.id, interval, sentiment_analysis_json
             )
         for s in sentiment_analysis.sentiments:
             for l in s.labels:
                 data.append({"date": rp.ts.date().isoformat(), "sentiment": l})
+        sentiment_analysis_json_by_date[rp.ts.date().isoformat()] = (
+            sentiment_analysis_json
+        )
 
     data_df = pd.DataFrame(data)
     chart = (
@@ -535,19 +540,22 @@ def sentiment_analysis(teacher_stats: TeacherStats):
     )
     st.subheader("Aggregate Sentiments", divider=True)
     st.altair_chart(chart, use_container_width=True)
-    st.divider()
 
     if len(rps) > 1:
+        st.divider()
         chart = (
             alt.Chart(data_df)
             .mark_line(point=True, size=2)
             .encode(x="date:O", y=alt.Y("count()", title=None), color="sentiment")
-            .add_params(alt.selection_point())
+            .add_params(alt.selection_interval("interval_selection"))
         )
         selection = st.altair_chart(
             chart, use_container_width=True, on_select="rerun"
-        ).selection.param_1
-        print(selection)
+        ).selection.interval_selection
+        if selection:
+            date = selection["date"][0]
+            st.subheader(f"Sentime timeline for {date}", divider=True)
+            st.table(sentiment_analysis_json_by_date[date]["sentiments"])
 
 
 def facial_recognition(class_id: str, teacher_stats: TeacherStats):
