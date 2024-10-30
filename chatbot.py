@@ -6,6 +6,7 @@ from langchain.prompts.prompt import PromptTemplate
 from langchain.callbacks.base import BaseCallbackHandler
 import streamlit as st
 from pydantic import BaseModel, Field
+from enum import Enum
 
 PROMPT_TEMPLATE = """
 Current conversation: {history}
@@ -27,17 +28,36 @@ class NumQuestionsParams(BaseModel):
     )
 
 
+class SentimentLabel(str, Enum):
+    joy = "joy"
+    sadness = "sadness"
+    anger = "fear"
+    surprise = "surprise"
+    disgust = "disgust"
+    trust = "trust"
+    anticipation = "anticipation"
+    love = "love"
+    guilt = "guilt"
+    shame = "shame"
+    relief = "relief"
+    envy = "envy"
+    pride = "pride"
+    compassion = "compassion"
+
+
 class Sentiment(BaseModel):
     start_time: str = Field(description="Start time of the interval")
     end_time: str = Field(description="End time of the interval")
-    sentiment: str = Field(description="sentiment/s detected")
+    labels: list[SentimentLabel] = Field(description="sentiment labels detected")
     reasoning: str = Field(description="short description of reasoning")
 
 
-class SentimentAnalysisParams(BaseModel):
+class SentimentAnalysis(BaseModel):
     """Sentiment analysis in the transcript"""
 
-    sentiments: list[Sentiment] = Field(description="list of sentiments detected every specified interval")
+    sentiments: list[Sentiment] = Field(
+        description="list of sentiments detected every specified interval"
+    )
 
 
 class StreamlitStreamHandler(BaseCallbackHandler):

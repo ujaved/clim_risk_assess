@@ -18,8 +18,7 @@ from io import BytesIO
 from utils import get_s3_object_keys
 import boto3
 import os
-from chatbot import SentimentAnalysisParams
-import json
+from chatbot import SentimentAnalysis
 
 
 WELCOME_MSG = "Welcome to Scientifically Taught Science"
@@ -459,7 +458,7 @@ def get_teacher_stats(class_id: str) -> TeacherStats | None:
             id=rec["id"],
             ts=parser.isoparse(rec["date"]),
             transcript=rec["transcript"],
-            chatbot=OpenAIChatbot(model_id="gpt-4-turbo", temperature=0.0),
+            chatbot=OpenAIChatbot(model_id="gpt-4o-2024-08-06", temperature=0.0),
             db_client=st.session_state.db_client,
             teacher=name,
             name_mapping=name_mapping,
@@ -477,36 +476,78 @@ def get_teacher_stats(class_id: str) -> TeacherStats | None:
 
 
 def sentiment_analysis(teacher_stats: TeacherStats):
-
-    date = st.selectbox(
-        "Date", [rp.ts.date() for rp in teacher_stats.recording_processors], index=None
+    dates = sorted([rp.ts.date() for rp in teacher_stats.recording_processors])
+    col1, col2 = st.columns(2)
+    start_date = col1.date_input(
+        "Start date",
+        value=dates[0],
+        min_value=dates[0],
+        max_value=dates[-1],
     )
-    if date is None:
+    end_date = col2.date_input(
+        "End date",
+        value=dates[-1],
+        min_value=dates[0],
+        max_value=dates[-1],
+    )
+
+    if start_date > end_date:
+        st.error("start date cannot be later than the end date")
         return
-    idx = [rp.ts.date() for rp in teacher_stats.recording_processors].index(date)
 
-    duration_mins = int(
-        teacher_stats.recording_processors[idx].class_duration_secs / 60
-    )
-    recording_id = teacher_stats.recording_processors[idx].id
+    rps = [
+        rp
+        for rp in teacher_stats.recording_processors
+        if rp.ts.date() >= start_date and rp.ts.date() <= end_date
+    ]
+    duration_mins = int(max([rp.class_duration_secs for rp in rps]) / 60)
+
+    cur_val = st.session_state.get("sentiment_analysis_interval")
     interval = st.slider(
         "Sentiment analysis interval (minutes)",
-        value=int(duration_mins / 10),
-        min_value=1,
-        max_value=duration_mins,
+        value=cur_val or int(duration_mins / 10),
+        min_value=min(2, int(duration_mins / 10)),
+        max_value=int(duration_mins / 2),
         step=int(duration_mins / 10),
+        key="sentiment_analysis_interval",
     )
-    sentiment_analysis_json = st.session_state.db_client.get_sentiment_analysis(
-        recording_id, interval
-    )
-    if not sentiment_analysis_json:
-        sentiment_analysis_json = teacher_stats.recording_processors[
-            idx
-        ].get_sentiment_analysis(interval)
-        st.session_state.db_client.insert_sentiment_analysis(
-            recording_id, interval, sentiment_analysis_json
+    data = []
+    for rp in rps:
+        sentiment_analysis_json = st.session_state.db_client.get_sentiment_analysis(
+            rp.id, interval
         )
-    st.table(sentiment_analysis_json["sentiments"])
+        if sentiment_analysis_json:
+            sentiment_analysis = SentimentAnalysis(**sentiment_analysis_json)
+        else:
+            sentiment_analysis = rp.get_sentiment_analysis(interval)
+            st.session_state.db_client.insert_sentiment_analysis(
+                rp.id, interval, sentiment_analysis.model_dump()
+            )
+        for s in sentiment_analysis.sentiments:
+            for l in s.labels:
+                data.append({"date": rp.ts.date().isoformat(), "sentiment": l})
+
+    data_df = pd.DataFrame(data)
+    chart = (
+        alt.Chart(data_df)
+        .mark_bar()
+        .encode(x="sentiment:O", y=alt.Y("count()", title=None), color="sentiment")
+    )
+    st.subheader("Aggregate Sentiments", divider=True)
+    st.altair_chart(chart, use_container_width=True)
+    st.divider()
+
+    if len(rps) > 1:
+        chart = (
+            alt.Chart(data_df)
+            .mark_line(point=True, size=2)
+            .encode(x="date:O", y=alt.Y("count()", title=None), color="sentiment")
+            .add_params(alt.selection_point())
+        )
+        selection = st.altair_chart(
+            chart, use_container_width=True, on_select="rerun"
+        ).selection.param_1
+        print(selection)
 
 
 def facial_recognition(class_id: str, teacher_stats: TeacherStats):
