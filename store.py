@@ -47,27 +47,27 @@ class DBClient:
             return recording_stats.data["num_questions"]
         return None
 
-    def get_sentiment_analysis(self, recording_id: str, interval: int) -> dict | None:
-        sentiment_analysis = (
-            self.client.table("sentiment_analysis")
-            .select("sentiment_analysis")
+    def get_emotion_analysis(self, recording_id: str, interval: int) -> dict | None:
+        emotion_analysis = (
+            self.client.table("emotion_analysis")
+            .select("emotion_analysis")
             .eq("recording_id", recording_id)
             .eq("interval", interval)
             .maybe_single()
             .execute()
         )
-        if sentiment_analysis:
-            return sentiment_analysis.data["sentiment_analysis"]
+        if emotion_analysis:
+            return emotion_analysis.data["emotion_analysis"]
         return None
 
-    def insert_sentiment_analysis(
+    def insert_emotion_analysis(
         self, recording_id: str, interval: int, json: dict
     ) -> None:
-        self.client.table("sentiment_analysis").insert(
+        self.client.table("emotion_analysis").insert(
             {
                 "recording_id": recording_id,
                 "interval": interval,
-                "sentiment_analysis": json,
+                "emotion_analysis": json,
             }
         ).execute()
 

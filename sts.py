@@ -18,7 +18,12 @@ from io import BytesIO
 from utils import get_s3_object_keys
 import boto3
 import os
-from chatbot import SentimentAnalysis
+from chatbot import (
+    EmotionAnalysis,
+    SecondaryToPrimaryMapping,
+    PrimaryToSecondaryMapping,
+)
+from collections import defaultdict
 
 
 WELCOME_MSG = "Welcome to Scientifically Taught Science"
@@ -475,7 +480,7 @@ def get_teacher_stats(class_id: str) -> TeacherStats | None:
     return TeacherStats(name=name, recording_processors=rps, name_mapping=name_mapping)
 
 
-def sentiment_analysis(teacher_stats: TeacherStats):
+def emotion_analysis(teacher_stats: TeacherStats):
     dates = sorted([rp.ts.date() for rp in teacher_stats.recording_processors])
     col1, col2 = st.columns(2)
     start_date = col1.date_input(
@@ -486,7 +491,7 @@ def sentiment_analysis(teacher_stats: TeacherStats):
     )
     end_date = col2.date_input(
         "End date",
-        value=dates[-1],
+        value=dates[0],
         min_value=dates[0],
         max_value=dates[-1],
     )
@@ -502,60 +507,117 @@ def sentiment_analysis(teacher_stats: TeacherStats):
     ]
     duration_mins = int(max([rp.class_duration_secs for rp in rps]) / 60)
 
-    cur_val = st.session_state.get("sentiment_analysis_interval")
+    cur_val = st.session_state.get("emotion_analysis_interval")
     interval = st.slider(
-        "Sentiment analysis interval (minutes)",
+        "Emotion analysis interval (minutes)",
         value=cur_val or int(duration_mins / 10),
         min_value=min(2, int(duration_mins / 10)),
         max_value=int(duration_mins / 2),
         step=int(duration_mins / 10),
-        key="sentiment_analysis_interval",
+        key="emotion_analysis_interval",
     )
-    data = []
-    sentiment_analysis_json_by_date = {}
+
+    emotion_counts = defaultdict(lambda: defaultdict(int))
+    primary_emotion_counts = defaultdict(lambda: defaultdict(int))
+    emotion_analysis_json_by_date = {}
+    num_intervals = 0
     for rp in rps:
-        sentiment_analysis_json = st.session_state.db_client.get_sentiment_analysis(
+        emotion_analysis_json = st.session_state.db_client.get_emotion_analysis(
             rp.id, interval
         )
-        if sentiment_analysis_json:
-            sentiment_analysis = SentimentAnalysis(**sentiment_analysis_json)
+        if emotion_analysis_json:
+            emotion_analysis = EmotionAnalysis(**emotion_analysis_json)
         else:
-            sentiment_analysis = rp.get_sentiment_analysis(interval)
-            sentiment_analysis_json = sentiment_analysis.model_dump()
-            st.session_state.db_client.insert_sentiment_analysis(
-                rp.id, interval, sentiment_analysis_json
+            emotion_analysis = rp.get_emotion_analysis(interval)
+            emotion_analysis_json = emotion_analysis.model_dump()
+            st.session_state.db_client.insert_emotion_analysis(
+                rp.id, interval, emotion_analysis_json
             )
-        for s in sentiment_analysis.sentiments:
+        num_intervals += len(emotion_analysis.emotions)
+        for s in emotion_analysis.emotions:
+            primary_emotions = {SecondaryToPrimaryMapping[l.value] for l in s.labels}
+            for p in primary_emotions:
+                primary_emotion_counts[rp.ts.date().isoformat()][p] += 1
             for l in s.labels:
-                data.append({"date": rp.ts.date().isoformat(), "sentiment": l})
-        sentiment_analysis_json_by_date[rp.ts.date().isoformat()] = (
-            sentiment_analysis_json
-        )
+                emotion_counts[rp.ts.date().isoformat()][l.value] += 1
 
-    data_df = pd.DataFrame(data)
+        emotion_analysis_json_by_date[rp.ts.date().isoformat()] = emotion_analysis_json
+
+    emotion_data = [
+        {
+            "date": date,
+            "emotion": s,
+            "count": c,
+            "num_intervals": num_intervals,
+        }
+        for date, sc in emotion_counts.items()
+        for s, c in sc.items()
+    ]
+    emotion_data_df = pd.DataFrame(emotion_data)
+
+    primary_emotion_data = [
+        {
+            "date": date,
+            "emotion": s,
+            "count": c,
+            "num_intervals": num_intervals,
+        }
+        for date, sc in primary_emotion_counts.items()
+        for s, c in sc.items()
+    ]
+    primary_emotion_data_df = pd.DataFrame(primary_emotion_data)
+
     chart = (
-        alt.Chart(data_df)
-        .mark_bar()
-        .encode(x="sentiment:O", y=alt.Y("count()", title=None), color="sentiment")
-    )
-    st.subheader("Aggregate Sentiments", divider=True)
-    st.altair_chart(chart, use_container_width=True)
-
-    if len(rps) > 1:
-        st.divider()
-        chart = (
-            alt.Chart(data_df)
-            .mark_line(point=True, size=2)
-            .encode(x="date:O", y=alt.Y("count()", title=None), color="sentiment")
-            .add_params(alt.selection_interval("interval_selection"))
+        alt.Chart(
+            primary_emotion_data_df.groupby(["emotion", "num_intervals"])
+            .sum("count")
+            .reset_index()
         )
-        selection = st.altair_chart(
-            chart, use_container_width=True, on_select="rerun"
-        ).selection.interval_selection
-        if selection:
-            date = selection["date"][0]
-            st.subheader(f"Sentime timeline for {date}", divider=True)
-            st.table(sentiment_analysis_json_by_date[date]["sentiments"])
+        .transform_calculate(percent="datum.count*100/datum.num_intervals")
+        .mark_bar()
+        .encode(
+            x=alt.X(
+                "emotion:O",
+                sort=alt.EncodingSortField(field="percent", order="descending"),
+            ),
+            y="percent:Q",
+            color=alt.Color("emotion", scale=alt.Scale(scheme="dark2")),
+        )
+        .add_params(alt.selection_point())
+    )
+    st.subheader("Aggregate Primary Emotions", divider=True)
+    st.info("Click on a bar to see the aggregate for the secondary emotions")
+    selection = st.altair_chart(
+        chart, use_container_width=True, on_select="rerun"
+    ).selection.param_1
+    if selection:
+        primary = selection[0]["emotion"]
+        secondary = PrimaryToSecondaryMapping[primary]
+        emotion_data_df = emotion_data_df[emotion_data_df["emotion"].isin(secondary)]
+        chart = (
+            alt.Chart(
+                emotion_data_df.groupby(["emotion", "num_intervals"])
+                .sum("count")
+                .reset_index()
+            )
+            .transform_calculate(percent="datum.count*100/datum.num_intervals")
+            .mark_bar()
+            .encode(
+                x=alt.X(
+                    "emotion:O",
+                    sort=alt.EncodingSortField(field="percent", order="descending"),
+                ),
+                y="percent:Q",
+                color=alt.Color("emotion", scale=alt.Scale(scheme="dark2")),
+            )
+        )
+        st.subheader(f"Aggregate Secondary Emotions for {primary}", divider=True)
+        st.altair_chart(chart, use_container_width=True)
+
+    st.subheader("Emotion Analysis Timelines", divider=True)
+    for d, j in emotion_analysis_json_by_date.items():
+        st.info(d)
+        st.table(j["emotions"])
 
 
 def facial_recognition(class_id: str, teacher_stats: TeacherStats):
@@ -756,7 +818,7 @@ def dashboard():
                 "Pairwise Participation",
                 "Comparison",
                 "Facial Recognition",
-                "Sentiment Analysis",
+                "Emotion Analysis",
             ],
             icons=[
                 "person-raised-hand",
@@ -778,8 +840,8 @@ def dashboard():
             metric_comparison(st.session_state.teacher_stats[class_id])
         case "Facial Recognition":
             facial_recognition(class_id, st.session_state.teacher_stats[class_id])
-        case "Sentiment Analysis":
-            sentiment_analysis(st.session_state.teacher_stats[class_id])
+        case "Emotion Analysis":
+            emotion_analysis(st.session_state.teacher_stats[class_id])
 
 
 def set_org_id():
