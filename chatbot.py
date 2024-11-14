@@ -112,6 +112,15 @@ SecondaryToPrimaryMapping: dict[EmotionName, str] = {
     EmotionName.scared: "fear",
 }
 
+
+class ModeName(str, Enum):
+    lecture = "Lecture"
+    discussion = "Discussion"
+    problem_solving = "Problem-Solving"
+    warm_up = "Warm-Up (Icebreaker)"
+    q_a = "Q&A (Question and Answer)"
+
+
 PrimaryToSecondaryMapping: dict[str, list[str]] = defaultdict(list)
 for k, v in SecondaryToPrimaryMapping.items():
     PrimaryToSecondaryMapping[v].append(k.value)
@@ -124,12 +133,25 @@ class Emotion(BaseModel):
     reasoning: str = Field(description="short description of reasoning")
 
 
+class Mode(BaseModel):
+    start_time: str = Field(description="Start time of the interval")
+    end_time: str = Field(description="End time of the interval")
+    label: ModeName = Field(description="mode label detected")
+    reasoning: str = Field(description="short description of reasoning")
+
+
 class EmotionAnalysis(BaseModel):
     """Emotion analysis in the transcript"""
 
     emotions: list[Emotion] = Field(
         description="list of emotions detected every specified interval"
     )
+
+
+class ModeAnalysis(BaseModel):
+    """Mode analysis in the transcript of a classroom"""
+
+    modes: list[Mode] = Field(description="mode detected every specified interval")
 
 
 class StreamlitStreamHandler(BaseCallbackHandler):

@@ -46,6 +46,30 @@ class DBClient:
         if recording_stats:
             return recording_stats.data["num_questions"]
         return None
+    
+    def get_mode_analysis(self, recording_id: str, interval: int) -> dict | None:
+        mode_analysis = (
+            self.client.table("mode_analysis")
+            .select("mode_analysis")
+            .eq("recording_id", recording_id)
+            .eq("interval", interval)
+            .maybe_single()
+            .execute()
+        )
+        if mode_analysis:
+            return mode_analysis.data["mode_analysis"]
+        return None
+
+    def insert_mode_analysis(
+        self, recording_id: str, interval: int, json: dict
+    ) -> None:
+        self.client.table("mode_analysis").insert(
+            {
+                "recording_id": recording_id,
+                "interval": interval,
+                "mode_analysis": json,
+            }
+        ).execute()
 
     def get_emotion_analysis(self, recording_id: str, interval: int) -> dict | None:
         emotion_analysis = (

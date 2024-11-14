@@ -1,5 +1,5 @@
 import webvtt
-from chatbot import NumQuestionsParams, EmotionAnalysis
+from chatbot import NumQuestionsParams, EmotionAnalysis, ModeAnalysis
 from openai import OpenAI
 import json
 from chatbot import Chatbot
@@ -58,7 +58,7 @@ class RecordingProcessor:
         self.id = id
         self.ts = ts
         self.transcript = transcript
-        self.dialogue: list[tuple[str, str]] = []
+        self.dialogue: list[tuple[str, str, int, int]] = []
         self.speaker_stats: dict[str, SpeakerStats] = {}
         self.chatbot = chatbot
         self.db_client = db_client
@@ -92,6 +92,16 @@ class RecordingProcessor:
             model=self.chatbot.model_id,
             messages=messages,
             response_format=EmotionAnalysis,
+        )
+        return response.choices[0].message.parsed
+    
+    def get_mode_analysis(self, interval: int) -> ModeAnalysis:
+        prompt = f"Following is a transcript of a classroom with timestamps. For every interval of {interval} minutes, classify it as a mode, choosing mode labels from the given list. \n\n {self.transcript}"
+        messages = [{"role": "user", "content": prompt}]
+        response = OpenAI().beta.chat.completions.parse(
+            model=self.chatbot.model_id,
+            messages=messages,
+            response_format=ModeAnalysis,
         )
         return response.choices[0].message.parsed
 
@@ -163,7 +173,8 @@ class RecordingProcessor:
                     (
                         prev_speaker,
                         prev_content,
-                        caption.end_in_seconds - cur_turn_start,
+                        cur_turn_start,
+                        caption.end_in_seconds,
                     )
                 )
                 prev_content = content
@@ -173,7 +184,7 @@ class RecordingProcessor:
 
         self.dialogue = self.dialogue[1:]
         self.dialogue.append(
-            (prev_speaker, prev_content, caption.end_in_seconds - cur_turn_start)
+            (prev_speaker, prev_content, cur_turn_start, caption.end_in_seconds)
         )
         for stats in self.speaker_stats.values():
             stats.mean_word_speed = (

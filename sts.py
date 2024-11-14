@@ -20,6 +20,7 @@ import boto3
 import os
 from chatbot import (
     EmotionAnalysis,
+    ModeAnalysis,
     SecondaryToPrimaryMapping,
     PrimaryToSecondaryMapping,
 )
@@ -620,6 +621,99 @@ def emotion_analysis(teacher_stats: TeacherStats):
         st.table(j["emotions"])
 
 
+def mode_analysis(teacher_stats: TeacherStats):
+    dates = sorted([rp.ts.date() for rp in teacher_stats.recording_processors])
+    col1, col2 = st.columns(2)
+    start_date = col1.date_input(
+        "Start date",
+        value=dates[0],
+        min_value=dates[0],
+        max_value=dates[-1],
+    )
+    end_date = col2.date_input(
+        "End date",
+        value=dates[0],
+        min_value=dates[0],
+        max_value=dates[-1],
+    )
+
+    if start_date > end_date:
+        st.error("start date cannot be later than the end date")
+        return
+
+    rps = [
+        rp
+        for rp in teacher_stats.recording_processors
+        if rp.ts.date() >= start_date and rp.ts.date() <= end_date
+    ]
+    duration_mins = int(max([rp.class_duration_secs for rp in rps]) / 60)
+
+    cur_val = st.session_state.get("mode_analysis_interval")
+    interval = st.slider(
+        "Mode analysis interval (minutes)",
+        value=cur_val or int(duration_mins / 5),
+        min_value=min(5, int(duration_mins / 5)),
+        max_value=int(duration_mins / 2),
+        step=int(duration_mins / 5),
+        key="mode_analysis_interval",
+    )
+
+    num_intervals = 0
+    mode_counts = defaultdict(lambda: defaultdict(int))
+    mode_analysis_json_by_date = {}
+    for rp in rps:
+        mode_analysis_json = st.session_state.db_client.get_mode_analysis(
+            rp.id, interval
+        )
+        if mode_analysis_json:
+            mode_analysis = ModeAnalysis(**mode_analysis_json)
+        else:
+            mode_analysis = rp.get_mode_analysis(interval)
+            mode_analysis_json = mode_analysis.model_dump()
+            st.session_state.db_client.insert_mode_analysis(
+                rp.id, interval, mode_analysis_json
+            )
+        num_intervals += len(mode_analysis.modes)
+        for m in mode_analysis.modes:
+            mode_counts[rp.ts.date().isoformat()][m.label.value] += 1
+
+        mode_analysis_json_by_date[rp.ts.date().isoformat()] = mode_analysis_json
+
+    mode_data = [
+        {
+            "date": date,
+            "mode": m,
+            "count": c,
+            "num_intervals": num_intervals,
+        }
+        for date, mc in mode_counts.items()
+        for m, c in mc.items()
+    ]
+    mode_data_df = pd.DataFrame(mode_data)
+    chart = (
+        alt.Chart(
+            mode_data_df.groupby(["mode", "num_intervals"]).sum("count").reset_index()
+        )
+        .transform_calculate(percent="datum.count*100/datum.num_intervals")
+        .mark_bar()
+        .encode(
+            x=alt.X(
+                "mode:O",
+                sort=alt.EncodingSortField(field="percent", order="descending"),
+            ),
+            y="percent:Q",
+            color=alt.Color("mode", scale=alt.Scale(scheme="dark2")),
+        )
+    )
+    st.subheader("Aggregate Modes", divider=True)
+    st.altair_chart(chart, use_container_width=True)
+
+    st.subheader("Mode Analysis Timelines", divider=True)
+    for d, j in mode_analysis_json_by_date.items():
+        st.info(d)
+        st.table(j["modes"])
+
+
 def facial_recognition(class_id: str, teacher_stats: TeacherStats):
     recording_ids = {rp.id: rp.ts.date() for rp in teacher_stats.recording_processors}
     recording_stats = st.session_state.db_client.get_recording_stats(
@@ -819,6 +913,7 @@ def dashboard():
                 "Comparison",
                 "Facial Recognition",
                 "Emotion Analysis",
+                "Mode Analysis",
             ],
             icons=[
                 "person-raised-hand",
@@ -826,6 +921,7 @@ def dashboard():
                 "bar-chart-steps",
                 "person-bounding-box",
                 "emoji-heart-eyes",
+                "upc-scan",
             ],
         )
 
@@ -842,6 +938,8 @@ def dashboard():
             facial_recognition(class_id, st.session_state.teacher_stats[class_id])
         case "Emotion Analysis":
             emotion_analysis(st.session_state.teacher_stats[class_id])
+        case "Mode Analysis":
+            mode_analysis(st.session_state.teacher_stats[class_id])
 
 
 def set_org_id():
