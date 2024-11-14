@@ -8,7 +8,6 @@ from gotrue.errors import AuthApiError
 import pandas as pd
 from altair import datum
 from streamlit_option_menu import option_menu
-import numpy as np
 import statsmodels.api as sm
 from scipy.stats import norm
 from streamlit_url_fragment import get_fragment
@@ -25,6 +24,9 @@ from chatbot import (
     PrimaryToSecondaryMapping,
 )
 from collections import defaultdict
+from itertools import groupby
+from utils import num_secs
+import random
 
 
 WELCOME_MSG = "Welcome to Scientifically Taught Science"
@@ -661,6 +663,7 @@ def mode_analysis(teacher_stats: TeacherStats):
     num_intervals = 0
     mode_counts = defaultdict(lambda: defaultdict(int))
     mode_analysis_json_by_date = {}
+    modes = []
     for rp in rps:
         mode_analysis_json = st.session_state.db_client.get_mode_analysis(
             rp.id, interval
@@ -675,9 +678,20 @@ def mode_analysis(teacher_stats: TeacherStats):
             )
         num_intervals += len(mode_analysis.modes)
         for m in mode_analysis.modes:
-            mode_counts[rp.ts.date().isoformat()][m.label.value] += 1
+            modes.append((rp.date, m))
+            mode_counts[rp.date][m.label.value] += 1
 
         mode_analysis_json_by_date[rp.ts.date().isoformat()] = mode_analysis_json
+
+    modes.sort(key=lambda m: m[1].label)
+    to_label = [random.choice(list(v)) for _, v in groupby(modes, lambda m: m[1].label)]
+    for l in to_label:
+        start_secs = num_secs(l[1].start_time)
+        end_secs = num_secs(l[1].end_time)
+        rp = [rp for rp in rps if rp.date == l[0]][0]
+        snippet = [
+            (d[0], d[1]) for d in rp.dialogue if d[2] >= start_secs and d[2] < end_secs
+        ]
 
     mode_data = [
         {

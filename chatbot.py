@@ -119,6 +119,7 @@ class ModeName(str, Enum):
     problem_solving = "Problem-Solving"
     warm_up = "Warm-Up (Icebreaker)"
     q_a = "Q&A (Question and Answer)"
+    wrap_up = "Wrap up"
 
 
 PrimaryToSecondaryMapping: dict[str, list[str]] = defaultdict(list)

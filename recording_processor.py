@@ -68,6 +68,10 @@ class RecordingProcessor:
         self.teacher = teacher
         self.name_mapping = name_mapping
 
+    @property
+    def date(self) -> str:
+        return self.ts.date().isoformat()
+
     def get_num_questions(self) -> dict[str, list]:
         prompt = f"Following is a transcript of zoom classroom session. For each speaker tell me the number of questions they ask. \n\n {self.dialogue}"
         messages = [{"role": "user", "content": prompt}]
@@ -94,7 +98,7 @@ class RecordingProcessor:
             response_format=EmotionAnalysis,
         )
         return response.choices[0].message.parsed
-    
+
     def get_mode_analysis(self, interval: int) -> ModeAnalysis:
         prompt = f"Following is a transcript of a classroom with timestamps. For every interval of {interval} minutes, classify it as a mode, choosing mode labels from the given list. \n\n {self.transcript}"
         messages = [{"role": "user", "content": prompt}]
@@ -104,35 +108,6 @@ class RecordingProcessor:
             response_format=ModeAnalysis,
         )
         return response.choices[0].message.parsed
-
-    def get_2_way_conversations(
-        self, speaker: str
-    ) -> dict[str, list[list[tuple[str, str]]]]:
-        """
-        get_2_way_conversations isolates all 2-person conversations involving the given speaker. e.g. teacher.
-        the resulting dict is indexed by the second person in the conversation
-        """
-
-        rv = defaultdict(list)
-        cur_conversation = []
-        prev_triple = (None, None, None)
-        for i, d in enumerate(self.dialogue[1 : len(self.dialogue) - 1], start=1):
-            participant = self.dialogue[i - 1][0]
-            cur_triple = (self.dialogue[i - 1], d, self.dialogue[i + 1])
-            if cur_triple[1][0] != speaker or cur_triple[0][0] != cur_triple[2][0]:
-                continue
-            if prev_triple[2] != cur_triple[0]:
-                # start of a new conversation
-                if cur_conversation:
-                    rv[participant].append(cur_conversation)
-                cur_conversation = [cur_triple[0], cur_triple[1], cur_triple[2]]
-            else:
-                # same conversation
-                cur_conversation.append(cur_triple[1])
-                cur_conversation.append(cur_triple[2])
-            prev_triple = cur_triple
-        rv[participant].append(cur_conversation)
-        return rv
 
     def process(self):
         prev_speaker = None

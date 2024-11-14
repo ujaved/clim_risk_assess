@@ -3,9 +3,16 @@ from datetime import datetime, timedelta
 import os
 
 
+def num_secs(timestamp: str) -> int:
+    fields = timestamp.split(":")
+    return int(fields[0]) * 3600 + int(fields[1]) * 60
+
+
 def get_s3_object_keys(s3_client, prefix: str) -> list[str]:
     s3_bucket = os.getenv("S3_BUCKET")
-    contents = s3_client.list_objects(Bucket=s3_bucket, Prefix=prefix).get("Contents", [])
+    contents = s3_client.list_objects(Bucket=s3_bucket, Prefix=prefix).get(
+        "Contents", []
+    )
     return [c["Key"] for c in contents]
 
 
