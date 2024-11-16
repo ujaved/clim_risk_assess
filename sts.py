@@ -213,24 +213,6 @@ def render_interruption_charts(teacher_stats: TeacherStats):
                 st.divider()
         return
 
-    st.subheader("Possible interruptions by teacher", divider=True)
-    with st.container(border=True):
-        col1, col2 = st.columns(2)
-        df = teacher_stats.get_teacher_interruption_df(
-            col1.date_input("start date", value=None),
-            col2.date_input("end date", value=None),
-        )
-        chart = alt.Chart(df).mark_line(point=True, size=2)
-        if st.checkbox("Mean duration in seconds before interruption", value=True):
-            chart = chart.encode(
-                x="date:O", y="mean(num_seconds_before_interruption)", color="student"
-            )
-        else:
-            chart = chart.encode(
-                x="date:O", y="count(num_seconds_before_interruption)", color="student"
-            )
-        st.altair_chart(chart, use_container_width=True)
-
 
 def render_pairwise_charts(teacher_stats: TeacherStats):
     # st.subheader("Pairwise participation for a (lead, follow) pair, given the data, is the conditional probability that the follow speaks right after the lead, divided by random chance that the follow speaks. ",divider=True)
@@ -653,16 +635,16 @@ def mode_analysis(teacher_stats: TeacherStats):
     cur_val = st.session_state.get("mode_analysis_interval")
     interval = st.slider(
         "Mode analysis interval (minutes)",
-        value=cur_val or int(duration_mins / 5),
-        min_value=min(5, int(duration_mins / 5)),
-        max_value=int(duration_mins / 2),
-        step=int(duration_mins / 5),
+        value=cur_val or 5,
+        min_value=min(5, int(duration_mins / 10)),
+        max_value=int(duration_mins / 3),
+        step=int(duration_mins / 10),
         key="mode_analysis_interval",
     )
 
     num_intervals = 0
     mode_counts = defaultdict(lambda: defaultdict(int))
-    mode_analysis_json_by_date = {}
+    mode_analysis_by_date = {}
     modes = []
     for rp in rps:
         mode_analysis_json = st.session_state.db_client.get_mode_analysis(
@@ -681,24 +663,18 @@ def mode_analysis(teacher_stats: TeacherStats):
             modes.append((rp.date, m))
             mode_counts[rp.date][m.label.value] += 1
 
-        mode_analysis_json_by_date[rp.ts.date().isoformat()] = mode_analysis_json
+        mode_analysis_by_date[rp.date] = mode_analysis_json
 
-    modes.sort(key=lambda m: m[1].label)
-    to_label = [random.choice(list(v)) for _, v in groupby(modes, lambda m: m[1].label)]
-    for l in to_label:
-        start_secs = num_secs(l[1].start_time)
-        end_secs = num_secs(l[1].end_time)
-        rp = [rp for rp in rps if rp.date == l[0]][0]
-        snippet = [
-            (d[0], d[1]) for d in rp.dialogue if d[2] >= start_secs and d[2] < end_secs
-        ]
+        # modes.sort(key=lambda m: m[1].label)
+        # to_label = [random.choice(list(v)) for _, v in groupby(modes, lambda m: m[1].label)]
 
     mode_data = [
         {
             "date": date,
             "mode": m,
             "count": c,
-            "num_intervals": num_intervals,
+            "num_intervals": len(mode_analysis_by_date[date]["modes"]),
+            "tot_num_intervals": num_intervals,
         }
         for date, mc in mode_counts.items()
         for m, c in mc.items()
@@ -706,9 +682,11 @@ def mode_analysis(teacher_stats: TeacherStats):
     mode_data_df = pd.DataFrame(mode_data)
     chart = (
         alt.Chart(
-            mode_data_df.groupby(["mode", "num_intervals"]).sum("count").reset_index()
+            mode_data_df.groupby(["mode", "tot_num_intervals"])
+            .sum("count")
+            .reset_index()
         )
-        .transform_calculate(percent="datum.count*100/datum.num_intervals")
+        .transform_calculate(percent="datum.count*100/datum.tot_num_intervals")
         .mark_bar()
         .encode(
             x=alt.X(
@@ -722,10 +700,56 @@ def mode_analysis(teacher_stats: TeacherStats):
     st.subheader("Aggregate Modes", divider=True)
     st.altair_chart(chart, use_container_width=True)
 
-    st.subheader("Mode Analysis Timelines", divider=True)
-    for d, j in mode_analysis_json_by_date.items():
-        st.info(d)
-        st.table(j["modes"])
+    chart = (
+        alt.Chart(mode_data_df)
+        .mark_bar()
+        .encode(
+            x=alt.X("count:Q").stack("normalize").title(None),
+            y="date:O",
+            color=alt.Color("mode", scale=alt.Scale(scheme="dark2")),
+            order=alt.Order("count:Q", sort="descending"),
+        )
+        .add_params(alt.selection_point())
+    )
+    st.subheader("Modes for each recording", divider=True)
+    st.info("Click on a segment to see details")
+    selection = st.altair_chart(
+        chart, use_container_width=True, on_select="rerun"
+    ).selection.param_1
+    if selection:
+        date = selection[0]["date"]
+        mode = selection[0]["mode"]
+        labeled_modes = [
+            m
+            for m in mode_analysis_by_date[date]["modes"]
+            if m["label"] == selection[0]["mode"]
+        ]
+        st.info(
+            f"Intervals on {date} labeled as {mode}. Select a row to view the entire transcript snippet"
+        )
+        row_selected = st.dataframe(
+            labeled_modes,
+            use_container_width=True,
+            on_select="rerun",
+            selection_mode="single-row",
+        ).selection.rows
+        if row_selected:
+            row = row_selected[0]
+            start_secs = num_secs(labeled_modes[row]["start_time"])
+            end_secs = num_secs(labeled_modes[row]["end_time"])
+            rp = [rp for rp in rps if rp.date == date][0]
+            snippet = [
+                (d[0], d[1])
+                for d in rp.dialogue
+                if d[2] >= start_secs and d[2] < end_secs
+            ]
+            for d in snippet:
+                if d[0] == rp.teacher:
+                    with st.chat_message("ai"):
+                        st.write(d[0] + ": " + d[1])
+                else:
+                    with st.chat_message("user"):
+                        st.write(d[0] + ": " + d[1])
 
 
 def facial_recognition(class_id: str, teacher_stats: TeacherStats):
