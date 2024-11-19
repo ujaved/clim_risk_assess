@@ -851,7 +851,7 @@ def label_speakers():
         df = pd.DataFrame(new_name_mapping)
         df["mapping options"] = df["mapping options"].astype("category")
         df["mapping options"] = df["mapping options"].cat.add_categories(
-            teacher_stats.name_mapping.values()
+            set(teacher_stats.name_mapping.values())
         )
         st.data_editor(
             df,
