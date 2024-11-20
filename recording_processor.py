@@ -177,7 +177,8 @@ class RecordingProcessor:
             self.db_client.insert_num_questions(self.id, num_questions_json)
         num_questions = NumQuestionsParams(**num_questions_json)
         for qc in num_questions.num_questions:
-            s = get_close_matches(qc.speaker, list(self.speaker_stats.keys()))[0]
+            # s = get_close_matches(qc.speaker, list(self.speaker_stats.values()))[0]
+            s = self.name_mapping.get(qc.speaker) or qc.speaker
             self.speaker_stats[s].num_questions = qc.question_count
 
 
