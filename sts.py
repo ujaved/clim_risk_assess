@@ -495,8 +495,8 @@ def emotion_analysis(teacher_stats: TeacherStats):
     cur_val = st.session_state.get("emotion_analysis_interval")
     interval = st.slider(
         "Emotion analysis interval (minutes)",
-        value=cur_val or int(duration_mins / 10),
-        min_value=min(2, int(duration_mins / 10)),
+        value=cur_val or 2,
+        min_value=2,
         max_value=int(duration_mins / 2),
         step=int(duration_mins / 10),
         key="emotion_analysis_interval",
@@ -635,8 +635,8 @@ def mode_analysis(teacher_stats: TeacherStats):
     cur_val = st.session_state.get("mode_analysis_interval")
     interval = st.slider(
         "Mode analysis interval (minutes)",
-        value=cur_val or 5,
-        min_value=min(5, int(duration_mins / 10)),
+        value=cur_val or 2,
+        min_value=2,
         max_value=int(duration_mins / 3),
         step=int(duration_mins / 10),
         key="mode_analysis_interval",
